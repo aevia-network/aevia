@@ -87,25 +87,6 @@ function readCookieValue(names: readonly string[], store: Awaited<ReturnType<typ
 }
 
 /**
- * Hard upper bound on any Privy API call invoked during session resolution.
- * The Privy SDK can legitimately take seconds on first-cold JWKS fetches, and
- * a Next.js RSC that blocks on it leaves the user staring at "carregando"
- * until the gateway kills the connection. Wrapping each await in a race keeps
- * the user moving — on timeout we log and fall through to the next path (or
- * return null, which redirects to `/` where they can log in again).
- */
-const PRIVY_CALL_TIMEOUT_MS = 4000;
-
-function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`[aevia-auth] timeout: ${label}`)), PRIVY_CALL_TIMEOUT_MS),
-    ),
-  ]);
-}
-
-/**
  * Read and verify the current user's Privy session from cookies.
  *
  * Resolution order chosen for determinism (so every request that sees the
@@ -138,15 +119,12 @@ export async function readAeviaSession(): Promise<AeviaSession | null> {
 
   if (accessToken) {
     try {
-      const verified = await withTimeout(
-        privy.utils().auth().verifyAuthToken(accessToken),
-        'verifyAuthToken',
-      );
+      const verified = await privy.utils().auth().verifyAuthToken(accessToken);
       const userId =
         (verified as { user_id?: string; userId?: string }).user_id ??
         (verified as { userId?: string }).userId;
       if (userId) {
-        const user = await withTimeout(privy.users()._get(userId), 'users._get');
+        const user = await privy.users()._get(userId);
         const expiresAt = Number((verified as { expiration?: number | string }).expiration ?? 0);
         const session = userToSession(user, expiresAt);
         if (session) return session;
@@ -161,10 +139,7 @@ export async function readAeviaSession(): Promise<AeviaSession | null> {
 
   if (idToken) {
     try {
-      const user = await withTimeout(
-        privy.users().get({ id_token: idToken }),
-        'users.get(id_token)',
-      );
+      const user = await privy.users().get({ id_token: idToken });
       const session = userToSession(user);
       if (session) return session;
       console.error('[aevia-auth] id-token path: user has no ethereum wallet');
@@ -193,15 +168,12 @@ export async function verifyBearerToken(token: string): Promise<AeviaSession | n
   }
 
   try {
-    const verified = await withTimeout(
-      privy.utils().auth().verifyAuthToken(token),
-      'bearer.verifyAuthToken',
-    );
+    const verified = await privy.utils().auth().verifyAuthToken(token);
     const userId =
       (verified as { user_id?: string; userId?: string }).user_id ??
       (verified as { userId?: string }).userId;
     if (userId) {
-      const user = await withTimeout(privy.users()._get(userId), 'bearer.users._get');
+      const user = await privy.users()._get(userId);
       const expiresAt = Number((verified as { expiration?: number | string }).expiration ?? 0);
       const session = userToSession(user, expiresAt);
       if (session) return session;
@@ -211,10 +183,7 @@ export async function verifyBearerToken(token: string): Promise<AeviaSession | n
   }
 
   try {
-    const user = await withTimeout(
-      privy.users().get({ id_token: token }),
-      'bearer.users.get(id_token)',
-    );
+    const user = await privy.users().get({ id_token: token });
     const session = userToSession(user);
     if (session) return session;
   } catch (err) {
