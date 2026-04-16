@@ -13,10 +13,16 @@ function streamUrl(...segments: string[]): string {
   return `${API_BASE}/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream/${segments.join('/')}`;
 }
 
-function headers(): HeadersInit {
+function jsonHeaders(): HeadersInit {
   return {
     Authorization: `Bearer ${getServerEnv().STREAM_API_TOKEN}`,
     'Content-Type': 'application/json',
+  };
+}
+
+function authHeader(): HeadersInit {
+  return {
+    Authorization: `Bearer ${getServerEnv().STREAM_API_TOKEN}`,
   };
 }
 
@@ -29,10 +35,11 @@ async function handle<T>(res: Response): Promise<T> {
   return envelope.result;
 }
 
+// ---- Live Input CRUD -----------------------------------------------------
+
 export async function createLiveInput(opts: {
   creatorHandle: string;
   title?: string;
-  /** Auto-delete recording after this many days. Dev: 30. Production: undefined (keep forever). */
   deleteRecordingAfterDays?: number;
 }): Promise<LiveInput> {
   const isProd = process.env.NEXT_PUBLIC_APP_ENV === 'production';
@@ -40,7 +47,7 @@ export async function createLiveInput(opts: {
 
   const res = await fetch(streamUrl('live_inputs'), {
     method: 'POST',
-    headers: headers(),
+    headers: jsonHeaders(),
     body: JSON.stringify({
       meta: {
         name: opts.title ?? `aevia-${opts.creatorHandle}-${Date.now()}`,
@@ -61,7 +68,7 @@ export async function createLiveInput(opts: {
 export async function getLiveInput(uid: string): Promise<LiveInput> {
   const res = await fetch(streamUrl('live_inputs', uid), {
     method: 'GET',
-    headers: headers(),
+    headers: jsonHeaders(),
   });
   return handle<LiveInput>(res);
 }
@@ -69,33 +76,103 @@ export async function getLiveInput(uid: string): Promise<LiveInput> {
 export async function listLiveInputs(): Promise<LiveInputListItem[]> {
   const res = await fetch(streamUrl('live_inputs'), {
     method: 'GET',
-    headers: headers(),
+    headers: jsonHeaders(),
   });
   const result = await handle<{ liveInputs: LiveInputListItem[] }>(res);
   return result.liveInputs ?? [];
 }
 
 /**
- * List the videos (recordings) derived from a given live input.
- * Returns empty array if Cloudflare has not yet produced a recording
- * (typical immediately after a broadcast ends; recordings are processed async).
+ * Update a live input. Cloudflare merges the provided `meta` object with the
+ * existing meta (does not replace), so partial updates of individual keys are
+ * safe. Name updates go through `meta.name`.
  */
+export async function updateLiveInput(
+  uid: string,
+  patch: { meta?: Record<string, string>; defaultCreator?: string },
+): Promise<LiveInput> {
+  // Read-modify-write of meta to preserve existing keys (name, creator, etc.)
+  const current = await getLiveInput(uid);
+  const mergedMeta = { ...(current.meta ?? {}), ...(patch.meta ?? {}) };
+
+  const res = await fetch(streamUrl('live_inputs', uid), {
+    method: 'PUT',
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      meta: mergedMeta,
+      ...(patch.defaultCreator !== undefined && { defaultCreator: patch.defaultCreator }),
+      recording: current.recording,
+    }),
+  });
+  return handle<LiveInput>(res);
+}
+
+export async function deleteLiveInput(uid: string): Promise<void> {
+  const res = await fetch(streamUrl('live_inputs', uid), {
+    method: 'DELETE',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Failed to delete live input ${uid}: ${res.status}`);
+  }
+}
+
 export async function listLiveInputVideos(uid: string): Promise<StreamVideo[]> {
   const res = await fetch(streamUrl('live_inputs', uid, 'videos'), {
     method: 'GET',
-    headers: headers(),
+    headers: jsonHeaders(),
   });
   const result = await handle<StreamVideo[] | { videos: StreamVideo[] }>(res);
   if (Array.isArray(result)) return result;
   return result.videos ?? [];
 }
 
-export async function deleteLiveInput(uid: string): Promise<void> {
-  const res = await fetch(streamUrl('live_inputs', uid), {
-    method: 'DELETE',
-    headers: headers(),
+// ---- Video (VOD) CRUD ----------------------------------------------------
+
+export async function getVideo(uid: string): Promise<StreamVideo> {
+  const res = await fetch(streamUrl(uid), {
+    method: 'GET',
+    headers: jsonHeaders(),
   });
-  if (!res.ok) {
-    throw new Error(`Failed to delete live input ${uid}: ${res.status}`);
+  return handle<StreamVideo>(res);
+}
+
+export async function deleteVideo(uid: string): Promise<void> {
+  const res = await fetch(streamUrl(uid), {
+    method: 'DELETE',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Failed to delete video ${uid}: ${res.status}`);
   }
+}
+
+/**
+ * Upload a video blob to Cloudflare Stream using the basic upload endpoint.
+ * Cloudflare transcodes the result to HLS + DASH automatically.
+ *
+ * Used by the MediaRecorder client-side path because Cloudflare Stream's
+ * WebRTC (WHIP) beta does not yet produce server-side recordings.
+ *
+ * Limits: file size ≤ 200 MiB, request body ≤ 100 MiB for Workers free tier.
+ * For alpha broadcasts (<5 min at 2.5 Mbps) the payload is well under both.
+ */
+export async function uploadVideoBlob(
+  file: File | Blob,
+  meta: Record<string, string>,
+): Promise<StreamVideo> {
+  const form = new FormData();
+  form.append(
+    'file',
+    file instanceof File ? file : new File([file], 'recording.webm', { type: file.type }),
+  );
+  form.append('meta', JSON.stringify(meta));
+  form.append('requireSignedURLs', 'false');
+
+  const res = await fetch(streamUrl(), {
+    method: 'POST',
+    headers: authHeader(),
+    body: form,
+  });
+  return handle<StreamVideo>(res);
 }

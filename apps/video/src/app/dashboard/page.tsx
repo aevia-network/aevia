@@ -3,34 +3,28 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { listLiveInputs } from '@/lib/cloudflare/stream-client';
 import { readSession } from '@/lib/session/cookie';
-import { MeshDot, PermanenceStrip, VigilChip } from '@aevia/ui';
-import { Radio, Trash2, Video } from 'lucide-react';
+import { MeshDot, VigilChip } from '@aevia/ui';
+import { Radio, Video } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { deleteLiveAction, signOutAction } from '../actions';
+import { signOutAction } from '../actions';
+import { LiveRow, type LiveRowData } from './live-row';
 
 export const runtime = 'edge';
 export const revalidate = 0;
-
-interface LiveRow {
-  uid: string;
-  state: 'connected' | 'disconnected' | 'unknown';
-  name: string;
-  created: string;
-}
 
 export default async function DashboardPage() {
   const session = await readSession();
   if (!session) redirect('/');
 
-  let myLives: LiveRow[] = [];
+  let myLives: LiveRowData[] = [];
   try {
     const all = await listLiveInputs();
     myLives = all
       .filter((l) => l.defaultCreator === session.handle)
       .map((l) => ({
         uid: l.uid,
-        state: (l.status?.current?.state as LiveRow['state']) ?? 'disconnected',
+        state: (l.status?.current?.state as LiveRowData['state']) ?? 'disconnected',
         name: l.meta?.name ?? '',
         created: l.created,
       }))
@@ -112,52 +106,14 @@ export default async function DashboardPage() {
         {myLives.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-on-surface-variant text-sm lowercase">
-              nenhuma transmissão ainda. a primeira aparecerá aqui — você poderá revê-la ou
-              apagá-la.
+              nenhuma transmissão ainda. a primeira aparecerá aqui — você poderá revê-la, renomeá-la
+              ou apagá-la.
             </CardContent>
           </Card>
         ) : (
           <div className="flex flex-col gap-3">
             {myLives.map((l) => (
-              <Card key={l.uid}>
-                <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {l.state === 'connected' ? (
-                      <Badge variant="live" className="font-label tracking-wide">
-                        <Radio className="mr-1 size-3" /> ao vivo
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="font-label tracking-wide">
-                        encerrada
-                      </Badge>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-sm">{l.name || 'sem título'}</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <PermanenceStrip
-                          layers={l.state === 'connected' ? ['providers', 'edge'] : ['edge']}
-                          width={80}
-                        />
-                        <p className="font-label text-[10px] text-on-surface-variant">
-                          {new Date(l.created).toLocaleString('pt-BR')} · {l.uid.slice(0, 8)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/live/${l.uid}`}>assistir</Link>
-                    </Button>
-                    <form action={deleteLiveAction}>
-                      <input type="hidden" name="uid" value={l.uid} />
-                      <Button type="submit" variant="destructive" size="sm">
-                        <Trash2 className="size-3.5" />
-                        apagar
-                      </Button>
-                    </form>
-                  </div>
-                </CardContent>
-              </Card>
+              <LiveRow key={l.uid} live={l} />
             ))}
           </div>
         )}

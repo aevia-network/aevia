@@ -15,44 +15,44 @@
  */
 @theme {
   /* --- Surface hierarchy (ink tonal layers) --- */
-  --color-background: #0F1115;
-  --color-surface: #0F1115;
+  --color-background: #0f1115;
+  --color-surface: #0f1115;
   --color-surface-dim: #0c0e12;
   --color-surface-lowest: #000000;
   --color-surface-low: #1a1c20;
-  --color-surface-container: #181B20;
-  --color-surface-high: #1D2127;
+  --color-surface-container: #181b20;
+  --color-surface-high: #1d2127;
   --color-surface-highest: #22262e;
   --color-surface-bright: #282c34;
 
   /* --- Primary: Verdigris (main brand) --- */
-  --color-primary: #3F6B5C;
-  --color-primary-dim: #5A8F7E;
-  --color-primary-container: #2F574A;
+  --color-primary: #3f6b5c;
+  --color-primary-dim: #5a8f7e;
+  --color-primary-container: #2f574a;
   --color-on-primary: #e2e5f0;
   --color-on-primary-container: #beedda;
 
   /* --- Secondary: Creamy Gold (economy/credits only) --- */
-  --color-secondary: #E8B86D;
+  --color-secondary: #e8b86d;
   --color-secondary-container: #523600;
   --color-on-secondary: #583a00;
 
   /* --- Tertiary: Sage (mesh/P2P indicators only) --- */
-  --color-tertiary: #A8C3B5;
+  --color-tertiary: #a8c3b5;
   --color-tertiary-container: #435c51;
 
   /* --- Text on surfaces (bone, not white) --- */
-  --color-on-surface: #F3EEE4;
-  --color-accent: #F3EEE4;
+  --color-on-surface: #f3eee4;
+  --color-accent: #f3eee4;
   --color-on-surface-variant: #a7abb5;
   --color-muted: #71757f;
   --color-outline: #71757f;
   --color-outline-variant: #444851;
 
   /* --- Semantic --- */
-  --color-danger: #B83B3B;
-  --color-error: #B83B3B;
-  --color-on-error: #F3EEE4;
+  --color-danger: #b83b3b;
+  --color-error: #b83b3b;
+  --color-on-error: #f3eee4;
 
   /* --- Radius: Round-8 rule (avatars/strip caps use pill) --- */
   --radius-sm: 4px;
