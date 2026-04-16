@@ -4,7 +4,7 @@ import { listLiveInputs } from '@/lib/cloudflare/stream-client';
 import { Radio } from 'lucide-react';
 import Link from 'next/link';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const revalidate = 15;
 
 export default async function DiscoverPage() {

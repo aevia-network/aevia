@@ -2,7 +2,7 @@ import { deleteLiveInput, getLiveInput } from '@/lib/cloudflare/stream-client';
 import { readSession } from '@/lib/session/cookie';
 import { NextResponse } from 'next/server';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;

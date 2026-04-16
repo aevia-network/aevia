@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { deleteLiveAction, signOutAction } from '../actions';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const revalidate = 0;
 
 interface LiveRow {

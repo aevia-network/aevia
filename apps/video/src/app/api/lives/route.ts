@@ -2,7 +2,7 @@ import { createLiveInput, listLiveInputs } from '@/lib/cloudflare/stream-client'
 import { readSession } from '@/lib/session/cookie';
 import { NextResponse } from 'next/server';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);

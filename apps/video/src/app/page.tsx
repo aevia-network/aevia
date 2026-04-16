@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { continueAsGuestAction } from './actions';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export default async function LandingPage({
   searchParams,

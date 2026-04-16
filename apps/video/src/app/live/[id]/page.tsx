@@ -2,7 +2,7 @@ import { getLiveInput } from '@/lib/cloudflare/stream-client';
 import { notFound } from 'next/navigation';
 import { Viewer } from './viewer';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export default async function LiveViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
