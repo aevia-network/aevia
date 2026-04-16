@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="aevia">
+  <rect width="512" height="512" rx="96" fill="#0F1115"/>
+  <text x="256" y="356" text-anchor="middle"
+        font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-weight="700" font-size="320" letter-spacing="-16"
+        fill="#F3EEE4">a</text>
+  <circle cx="368" cy="160" r="32" fill="#A8C3B5"/>
+</svg>

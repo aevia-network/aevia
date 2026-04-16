@@ -1,4 +1,5 @@
-import type { Metadata } from 'next';
+import { RegisterServiceWorker } from '@/components/register-sw';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Inter, Sora } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
@@ -29,6 +30,23 @@ export const metadata: Metadata = {
   description:
     'live de baixa latência, vod automático, clips virais. seu conteúdo, sua audiência, seu protocolo.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
+  applicationName: 'aevia',
+  appleWebApp: {
+    capable: true,
+    title: 'aevia',
+    statusBarStyle: 'black-translucent',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: '#0F1115',
+  colorScheme: 'dark',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -36,6 +54,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="pt-BR" className={`${sora.variable} ${inter.variable} ${geist.variable}`}>
       <body className="min-h-screen bg-background font-body text-accent antialiased">
         {children}
+        <RegisterServiceWorker />
       </body>
     </html>
   );
