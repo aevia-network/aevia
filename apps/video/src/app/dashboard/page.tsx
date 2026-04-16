@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { listLiveInputs } from '@/lib/cloudflare/stream-client';
 import { readSession } from '@/lib/session/cookie';
+import { MeshDot, PermanenceStrip, VigilChip } from '@aevia/ui';
 import { Radio, Trash2, Video } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -39,46 +40,60 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-16">
+    <main className="mx-auto max-w-[720px] px-6 py-8">
       <header className="mb-12 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-muted text-xs uppercase tracking-[0.2em]">Welcome back</p>
-          <h1 className="mt-1 font-semibold text-3xl tracking-tight">{session.handle}</h1>
+        <div className="flex items-center gap-2">
+          <span className="font-headline text-[20px] font-semibold tracking-tight">aevia</span>
+          <MeshDot />
         </div>
-        <Badge variant="outline">anonymous session</Badge>
+        <Badge variant="outline" className="font-label text-[10px] lowercase tracking-wide">
+          sessão anônima
+        </Badge>
       </header>
+
+      <section className="mb-10">
+        <div className="flex items-center gap-2">
+          <h1 className="font-headline text-3xl font-semibold tracking-tight lowercase">
+            {session.handle}
+          </h1>
+          <VigilChip />
+        </div>
+        <p className="mt-2 font-label text-[11px] uppercase tracking-[0.15em] text-on-surface-variant">
+          seu espaço de transmissão
+        </p>
+      </section>
 
       <section className="mb-12 grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 font-headline">
               <Radio className="size-5 text-danger" />
-              Go live
+              ir ao vivo
             </CardTitle>
-            <CardDescription>
-              Broadcast from your browser — low-latency, automatic VOD, shareable link.
+            <CardDescription className="lowercase">
+              transmita do navegador — baixa latência, vod automático, link compartilhável.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild size="lg">
-              <Link href="/live/new">Start broadcast</Link>
+              <Link href="/live/new">começar transmissão</Link>
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 font-headline">
               <Video className="size-5 text-accent" />
-              Discover
+              descobrir
             </CardTitle>
-            <CardDescription>
-              See what&apos;s live on Aevia right now. Tap any card to watch.
+            <CardDescription className="lowercase">
+              veja o que está no ar agora. toque em qualquer cartão para assistir.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline" size="lg">
-              <Link href="/discover">Explore</Link>
+              <Link href="/discover">explorar</Link>
             </Button>
           </CardContent>
         </Card>
@@ -86,19 +101,19 @@ export default async function DashboardPage() {
 
       <section>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold text-xl">Your lives</h2>
+          <h2 className="font-headline text-xl font-semibold lowercase">suas transmissões</h2>
           {myLives.length > 0 && (
-            <p className="text-muted text-xs">
-              {myLives.length} {myLives.length === 1 ? 'broadcast' : 'broadcasts'}
+            <p className="font-label text-[11px] uppercase tracking-wider text-on-surface-variant">
+              {myLives.length} {myLives.length === 1 ? 'transmissão' : 'transmissões'}
             </p>
           )}
         </div>
 
         {myLives.length === 0 ? (
           <Card>
-            <CardContent className="py-10 text-center text-muted text-sm">
-              No broadcasts yet. Your first live will appear here — you can watch it again and
-              delete it.
+            <CardContent className="py-10 text-center text-on-surface-variant text-sm lowercase">
+              nenhuma transmissão ainda. a primeira aparecerá aqui — você poderá revê-la ou
+              apagá-la.
             </CardContent>
           </Card>
         ) : (
@@ -108,28 +123,36 @@ export default async function DashboardPage() {
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {l.state === 'connected' ? (
-                      <Badge variant="live">
-                        <Radio className="mr-1 size-3" /> LIVE
+                      <Badge variant="live" className="font-label tracking-wide">
+                        <Radio className="mr-1 size-3" /> ao vivo
                       </Badge>
                     ) : (
-                      <Badge variant="outline">ended</Badge>
+                      <Badge variant="outline" className="font-label tracking-wide">
+                        encerrada
+                      </Badge>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-sm">{l.name || 'Untitled'}</p>
-                      <p className="text-muted text-xs">
-                        {new Date(l.created).toLocaleString()} · {l.uid.slice(0, 8)}
-                      </p>
+                      <p className="truncate font-medium text-sm">{l.name || 'sem título'}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <PermanenceStrip
+                          layers={l.state === 'connected' ? ['providers', 'edge'] : ['edge']}
+                          width={80}
+                        />
+                        <p className="font-label text-[10px] text-on-surface-variant">
+                          {new Date(l.created).toLocaleString('pt-BR')} · {l.uid.slice(0, 8)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button asChild variant="outline" size="sm">
-                      <Link href={`/live/${l.uid}`}>Watch</Link>
+                      <Link href={`/live/${l.uid}`}>assistir</Link>
                     </Button>
                     <form action={deleteLiveAction}>
                       <input type="hidden" name="uid" value={l.uid} />
                       <Button type="submit" variant="destructive" size="sm">
                         <Trash2 className="size-3.5" />
-                        Delete
+                        apagar
                       </Button>
                     </form>
                   </div>
@@ -140,10 +163,10 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      <footer className="mt-16 text-muted text-xs">
+      <footer className="mt-16 text-on-surface-variant text-xs">
         <form action={signOutAction}>
-          <button type="submit" className="underline underline-offset-4">
-            Sign out
+          <button type="submit" className="lowercase underline underline-offset-4">
+            sair
           </button>
         </form>
       </footer>

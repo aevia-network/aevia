@@ -1,22 +1,99 @@
 @import "tailwindcss";
 
 /**
- * Aevia design tokens.
- * Brand palette, typography, radius — shared across video + network.
+ * Aevia — Sovereign Editorial design system.
+ * Source of truth: Stitch project 12044695711077109600, DS "Aevia — Sovereign Editorial".
+ *
+ * Philosophy:
+ * - Ink, Verdigris, Bone — no pure white, no pure black.
+ * - No-Line rule: tonal layering over 1px borders (exception: Live Tile 2px primary_dim).
+ * - Editorial asymmetry, architectural radius (Round-8), dignified voice.
+ * - pt-BR lowercase everywhere (exception: error chips).
+ *
+ * Fonts are loaded via next/font in apps/video/src/app/layout.tsx and override
+ * the fallbacks declared here through CSS variables with the same names.
  */
 @theme {
-  --color-background: #0a0e1a;
-  --color-surface: #111827;
-  --color-primary: #3b82f6;
-  --color-accent: #f5f5f4;
-  --color-muted: #6b7280;
-  --color-danger: #dc2626;
+  /* --- Surface hierarchy (ink tonal layers) --- */
+  --color-background: #0F1115;
+  --color-surface: #0F1115;
+  --color-surface-dim: #0c0e12;
+  --color-surface-lowest: #000000;
+  --color-surface-low: #1a1c20;
+  --color-surface-container: #181B20;
+  --color-surface-high: #1D2127;
+  --color-surface-highest: #22262e;
+  --color-surface-bright: #282c34;
 
+  /* --- Primary: Verdigris (main brand) --- */
+  --color-primary: #3F6B5C;
+  --color-primary-dim: #5A8F7E;
+  --color-primary-container: #2F574A;
+  --color-on-primary: #e2e5f0;
+  --color-on-primary-container: #beedda;
+
+  /* --- Secondary: Creamy Gold (economy/credits only) --- */
+  --color-secondary: #E8B86D;
+  --color-secondary-container: #523600;
+  --color-on-secondary: #583a00;
+
+  /* --- Tertiary: Sage (mesh/P2P indicators only) --- */
+  --color-tertiary: #A8C3B5;
+  --color-tertiary-container: #435c51;
+
+  /* --- Text on surfaces (bone, not white) --- */
+  --color-on-surface: #F3EEE4;
+  --color-accent: #F3EEE4;
+  --color-on-surface-variant: #a7abb5;
+  --color-muted: #71757f;
+  --color-outline: #71757f;
+  --color-outline-variant: #444851;
+
+  /* --- Semantic --- */
+  --color-danger: #B83B3B;
+  --color-error: #B83B3B;
+  --color-on-error: #F3EEE4;
+
+  /* --- Radius: Round-8 rule (avatars/strip caps use pill) --- */
   --radius-sm: 4px;
   --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-full: 9999px;
 
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* --- Fonts (next/font overrides these vars at runtime) --- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-headline: "Sora", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-label: "Geist", ui-sans-serif, system-ui, -apple-system, monospace;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+}
+
+/**
+ * Signature: mesh dot — sage pulse indicating P2P mesh presence.
+ * Used beside the wordmark in the header and inline wherever we display peer count.
+ */
+.aevia-mesh-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--color-tertiary);
+  box-shadow: 0 0 8px var(--color-tertiary);
+}
+
+/**
+ * Signature: permanence strip — 4 pill segments representing the Waterfall.
+ * Segment colors (in order): sage (L1 local mesh), verdigris (L2 provider nodes),
+ * bone @ 40% (L3 edge gateway), creamy gold (L4 cold storage).
+ * See docs/protocol-spec/9-resilience.md for the Waterfall definition.
+ */
+.aevia-permanence-strip {
+  display: flex;
+  gap: 2px;
+  overflow: hidden;
+  border-radius: 9999px;
+}
+.aevia-permanence-strip > * {
+  height: 100%;
+  flex: 1 1 0%;
 }

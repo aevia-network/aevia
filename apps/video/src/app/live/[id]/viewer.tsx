@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
+import { PermanenceStrip, VigilChip } from '@aevia/ui';
 import { AlertCircle, Radio } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -35,7 +36,7 @@ export function Viewer({
           if (s === 'connected') setStatus('playing');
           if (s === 'failed' || s === 'closed') {
             setStatus('error');
-            setErrorMsg(`Connection ${s}`);
+            setErrorMsg(`conexão ${s === 'failed' ? 'falhou' : 'encerrada'}`);
           }
           if (s === 'disconnected') setStatus('ended');
         },
@@ -51,7 +52,7 @@ export function Viewer({
         }
       }
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to connect');
+      setErrorMsg(err instanceof Error ? err.message : 'falha ao conectar');
       setStatus('error');
     }
   }, [whepUrl]);
@@ -75,50 +76,79 @@ export function Viewer({
     <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-muted text-xs uppercase tracking-[0.2em]">@{creator}</p>
-          <h1 className="mt-1 font-semibold text-2xl tracking-tight">Live broadcast</h1>
+          <div className="flex items-center gap-2">
+            <p className="font-label text-[11px] uppercase tracking-[0.15em] text-on-surface-variant">
+              @{creator}
+            </p>
+            {status === 'playing' && <VigilChip />}
+          </div>
+          <h1 className="mt-1 font-headline text-2xl font-semibold tracking-tight lowercase">
+            transmissão ao vivo
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           {status === 'playing' && (
-            <Badge variant="live">
-              <Radio className="mr-1 size-3" /> LIVE
+            <Badge variant="live" className="font-label tracking-wide">
+              <Radio className="mr-1 size-3" /> ao vivo
             </Badge>
           )}
-          {status === 'connecting' && <Badge variant="secondary">Connecting</Badge>}
-          {status === 'ended' && <Badge variant="outline">Ended</Badge>}
-          {status === 'error' && <Badge variant="live">Error</Badge>}
-          <code className="text-muted text-xs">{uid.slice(0, 8)}</code>
+          {status === 'connecting' && (
+            <Badge variant="secondary" className="font-label tracking-wide lowercase">
+              conectando
+            </Badge>
+          )}
+          {status === 'ended' && (
+            <Badge variant="outline" className="font-label tracking-wide lowercase">
+              encerrada
+            </Badge>
+          )}
+          {status === 'error' && (
+            <Badge variant="live" className="font-label tracking-wide lowercase">
+              erro
+            </Badge>
+          )}
+          <code className="font-label text-on-surface-variant text-xs">{uid.slice(0, 8)}</code>
         </div>
       </header>
 
-      <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-surface bg-surface">
+      <div className="relative aspect-video w-full overflow-hidden rounded-lg border-2 border-primary-dim bg-surface-high">
         <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-contain" />
         {autoplayBlocked && (
           <button
             type="button"
             onClick={unmute}
-            className="absolute inset-0 flex items-center justify-center bg-background/80 font-medium text-accent text-lg"
+            className="absolute inset-0 flex items-center justify-center bg-background/80 font-headline font-medium text-accent text-lg lowercase"
           >
-            Tap to unmute
+            toque para ativar o som
           </button>
         )}
       </div>
 
+      <div className="mt-4 flex items-center gap-3">
+        <PermanenceStrip
+          layers={status === 'playing' ? ['providers', 'edge'] : ['edge']}
+          width={160}
+        />
+        <p className="font-label text-[11px] text-on-surface-variant">
+          persistência: {status === 'playing' ? 'edge + provider nodes' : 'edge gateway'}
+        </p>
+      </div>
+
       {state === 'disconnected' && status !== 'playing' && (
-        <div className="mt-6 flex items-center gap-2 rounded-md border border-surface bg-surface/50 p-4 text-muted text-sm">
+        <div className="mt-6 flex items-center gap-2 rounded-md bg-surface-container p-4 text-on-surface-variant text-sm lowercase">
           <AlertCircle className="size-4" />
-          Broadcaster is not currently streaming. Waiting for them to come online…
-          <Button size="sm" variant="ghost" onClick={start}>
-            Retry
+          transmissor não está no ar. aguardando retorno…
+          <Button size="sm" variant="ghost" onClick={start} className="lowercase">
+            tentar novamente
           </Button>
         </div>
       )}
 
       {errorMsg && (
-        <p className="mt-4 text-danger text-sm">
-          <strong>Error:</strong> {errorMsg}
-          <Button size="sm" variant="outline" className="ml-3" onClick={start}>
-            Retry
+        <p className="mt-4 text-danger text-sm lowercase">
+          <strong>erro:</strong> {errorMsg}
+          <Button size="sm" variant="outline" className="ml-3 lowercase" onClick={start}>
+            tentar novamente
           </Button>
         </p>
       )}

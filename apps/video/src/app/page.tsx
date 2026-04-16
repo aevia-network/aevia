@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { readSession } from '@/lib/session/cookie';
+import { MeshDot } from '@aevia/ui';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { continueAsGuestAction } from './actions';
@@ -19,36 +20,46 @@ export default async function LandingPage({
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-10 px-6 py-24">
-      <div className="flex max-w-2xl flex-col items-center gap-6 text-center">
-        <p className="text-muted text-xs uppercase tracking-[0.3em]">Aevia</p>
-        <h1 className="font-semibold text-5xl tracking-tight md:text-6xl">
-          Go live without the gatekeepers.
-        </h1>
-        <p className="text-lg text-muted md:text-xl">
-          Low-latency live, automatic VOD, viral clips. Your content, your audience, your protocol.
+    <main className="mx-auto flex min-h-screen max-w-[720px] flex-col px-6 py-8">
+      <header className="flex items-center gap-2">
+        <span className="font-headline text-[20px] font-semibold tracking-tight">aevia</span>
+        <MeshDot />
+      </header>
+
+      <section className="flex flex-1 flex-col items-start justify-center gap-8">
+        <p className="font-label text-[11px] uppercase tracking-[0.2em] text-on-surface-variant">
+          protocolo soberano de vídeo
         </p>
-      </div>
+        <h1 className="font-headline text-5xl font-semibold leading-[1.05] tracking-tight md:text-6xl">
+          transmita sem
+          <br />
+          intermediários.
+        </h1>
+        <p className="max-w-lg text-lg text-on-surface-variant md:text-xl">
+          live de baixa latência, vod automático, clips compartilháveis. seu conteúdo, sua
+          audiência, seu protocolo — sem app store, sem derrubada arbitrária.
+        </p>
 
-      <form action={continueAsGuestAction}>
-        <Button type="submit" size="lg">
-          Continue
-        </Button>
-      </form>
+        <form action={continueAsGuestAction}>
+          <Button type="submit" size="lg">
+            continuar
+          </Button>
+        </form>
 
-      <p className="max-w-lg text-center text-muted text-xs">
-        No email. No password. We generate an anonymous handle so you can start broadcasting in
-        seconds. Identity and wallet come later.
-      </p>
+        <p className="max-w-md text-on-surface-variant/70 text-xs">
+          sem e-mail, sem senha. geramos um handle anônimo para você começar a transmitir em
+          segundos. identidade soberana e carteira chegam depois.
+        </p>
+      </section>
 
       {next && (
-        <p className="text-muted text-xs">
-          You&apos;ll be redirected to{' '}
-          <Link href={next} className="underline">
+        <footer className="pt-6 text-on-surface-variant text-xs">
+          você será redirecionado para{' '}
+          <Link href={next} className="underline underline-offset-4">
             {next}
           </Link>{' '}
-          after sign-in.
-        </p>
+          após entrar.
+        </footer>
       )}
     </main>
   );
