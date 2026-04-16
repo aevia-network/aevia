@@ -1,9 +1,8 @@
-import { Button } from '@/components/ui/button';
-import { readSession } from '@/lib/session/cookie';
+import { LoginButton } from '@/components/login-button';
+import { readAeviaSession } from '@aevia/auth/server';
 import { MeshDot } from '@aevia/ui';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { continueAsGuestAction } from './actions';
 
 export const runtime = 'edge';
 
@@ -12,7 +11,7 @@ export default async function LandingPage({
 }: {
   searchParams: Promise<{ next?: string }>;
 }) {
-  const session = await readSession();
+  const session = await readAeviaSession();
   const { next } = await searchParams;
 
   if (session) {
@@ -40,15 +39,11 @@ export default async function LandingPage({
           audiência, seu protocolo — sem app store, sem derrubada arbitrária.
         </p>
 
-        <form action={continueAsGuestAction}>
-          <Button type="submit" size="lg">
-            continuar
-          </Button>
-        </form>
+        <LoginButton size="lg" next={next} />
 
         <p className="max-w-md text-on-surface-variant/70 text-xs">
-          sem e-mail, sem senha. geramos um handle anônimo para você começar a transmitir em
-          segundos. identidade soberana e carteira chegam depois.
+          entre com e-mail, google, apple, passkey ou carteira. sua identidade soberana vive numa
+          smart wallet embutida na base l2 — você assina seus conteúdos on-chain.
         </p>
       </section>
 

@@ -7,10 +7,9 @@ import { z } from 'zod';
 const serverSchema = z.object({
   CLOUDFLARE_ACCOUNT_ID: z.string().min(1, 'CLOUDFLARE_ACCOUNT_ID required'),
   STREAM_API_TOKEN: z.string().min(1, 'STREAM_API_TOKEN required'),
-  SESSION_SIGNING_KEY: z
-    .string()
-    .min(32, 'SESSION_SIGNING_KEY must be at least 32 chars (use `openssl rand -hex 32`)'),
   STREAM_WEBHOOK_SECRET: z.string().optional(),
+  NEXT_PUBLIC_PRIVY_APP_ID: z.string().min(1, 'NEXT_PUBLIC_PRIVY_APP_ID required'),
+  PRIVY_APP_SECRET: z.string().min(1, 'PRIVY_APP_SECRET required'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -39,4 +38,5 @@ export const clientEnv = {
     | 'preview'
     | 'production',
   streamCustomerCode: process.env.NEXT_PUBLIC_STREAM_CUSTOMER_CODE,
+  privyAppId: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
 } as const;

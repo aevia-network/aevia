@@ -1,5 +1,5 @@
-import { updateLiveInput, uploadVideoBlob } from '@/lib/cloudflare/stream-client';
-import { readSession } from '@/lib/session/cookie';
+import { getLiveInput, updateLiveInput, uploadVideoBlob } from '@/lib/cloudflare/stream-client';
+import { readAeviaSession } from '@aevia/auth/server';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
@@ -14,10 +14,16 @@ export const runtime = 'edge';
  * request body limits.
  */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const session = await readSession();
+  const session = await readAeviaSession();
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const { id: liveInputId } = await context.params;
+
+  // Ownership check — only the live's creator may upload its recording.
+  const live = await getLiveInput(liveInputId).catch(() => null);
+  if (!live || live.defaultCreator !== session.address) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   let file: File | null;
   try {
@@ -38,7 +44,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const video = await uploadVideoBlob(file, {
       liveInputId,
-      creator: session.handle,
+      creator: session.displayName,
+      creatorAddress: session.address,
+      creatorDid: session.did,
       source: 'whip-client-recorder',
     });
 

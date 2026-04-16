@@ -1,3 +1,4 @@
+import { Providers } from '@/components/providers';
 import { RegisterServiceWorker } from '@/components/register-sw';
 import type { Metadata, Viewport } from 'next';
 import { Geist, Inter, Sora } from 'next/font/google';
@@ -53,7 +54,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" className={`${sora.variable} ${inter.variable} ${geist.variable}`}>
       <body className="min-h-screen bg-background font-body text-accent antialiased">
-        {children}
+        <Providers>{children}</Providers>
         <RegisterServiceWorker />
       </body>
     </html>

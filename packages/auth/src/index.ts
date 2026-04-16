@@ -1,9 +1,17 @@
 /**
- * @aevia/auth — auth primitives wrapped around Privy.
+ * @aevia/auth — shared auth primitives for Aevia clients and servers.
  *
- * Sprint 0: barrel stub.
- * Sprint 1: Privy client + server helpers, DID resolution (did:pkh:eip155:8453:...).
- * Sprint 2: EIP-712 manifest signing, ERC-1271 verification.
+ * - Main entry (`@aevia/auth`): DID helpers, types, chain constants (safe on edge + client).
+ * - `@aevia/auth/client`: React SDK wrapper (`'use client'`).
+ * - `@aevia/auth/server`: server-side session + token verification (`next/headers` + Privy server SDK).
  */
 
-export type { AeviaDid, AeviaSession } from './types';
+export { addressToDid, didToAddress, didChainId, shortAddress } from './did';
+export {
+  AEVIA_CHAIN_ID_MAINNET,
+  AEVIA_CHAIN_ID_SEPOLIA,
+  base,
+  baseSepolia,
+  defaultChain,
+} from './chains';
+export type { AeviaDid, AeviaSession, LoginMethod } from './types';

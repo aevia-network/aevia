@@ -1,27 +1,28 @@
+import { LogoutButton } from '@/components/logout-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { listLiveInputs } from '@/lib/cloudflare/stream-client';
-import { readSession } from '@/lib/session/cookie';
+import { shortAddress } from '@aevia/auth';
+import { readAeviaSession } from '@aevia/auth/server';
 import { MeshDot, VigilChip } from '@aevia/ui';
 import { Radio, Video } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { signOutAction } from '../actions';
 import { LiveRow, type LiveRowData } from './live-row';
 
 export const runtime = 'edge';
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const session = await readSession();
+  const session = await readAeviaSession();
   if (!session) redirect('/');
 
   let myLives: LiveRowData[] = [];
   try {
     const all = await listLiveInputs();
     myLives = all
-      .filter((l) => l.defaultCreator === session.handle)
+      .filter((l) => l.defaultCreator === session.address)
       .map((l) => ({
         uid: l.uid,
         state: (l.status?.current?.state as LiveRowData['state']) ?? 'disconnected',
@@ -41,19 +42,19 @@ export default async function DashboardPage() {
           <MeshDot />
         </div>
         <Badge variant="outline" className="font-label text-[10px] lowercase tracking-wide">
-          sessão anônima
+          {session.loginMethod === 'unknown' ? 'conectado' : session.loginMethod}
         </Badge>
       </header>
 
       <section className="mb-10">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-headline text-3xl font-semibold tracking-tight lowercase">
-            {session.handle}
+            {session.displayName}
           </h1>
           <VigilChip />
         </div>
         <p className="mt-2 font-label text-[11px] uppercase tracking-[0.15em] text-on-surface-variant">
-          seu espaço de transmissão
+          seu espaço de transmissão · {shortAddress(session.address)}
         </p>
       </section>
 
@@ -120,11 +121,7 @@ export default async function DashboardPage() {
       </section>
 
       <footer className="mt-16 text-on-surface-variant text-xs">
-        <form action={signOutAction}>
-          <button type="submit" className="lowercase underline underline-offset-4">
-            sair
-          </button>
-        </form>
+        <LogoutButton />
       </footer>
     </main>
   );

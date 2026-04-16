@@ -20,7 +20,17 @@ interface CreatedLive {
   creator: string;
 }
 
-export function Producer({ handle }: { handle: string }) {
+export function Producer({
+  displayName,
+  address: _address,
+  did: _did,
+}: {
+  displayName: string;
+  /** Reserved for Sprint 2 manifest signing. */
+  address: `0x${string}`;
+  /** Reserved for Sprint 2 manifest signing. */
+  did: string;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const whipSessionRef = useRef<WhipSession | null>(null);
   const recorderRef = useRef<RecorderSession | null>(null);
@@ -176,7 +186,7 @@ export function Producer({ handle }: { handle: string }) {
             transmissor
           </p>
           <h1 className="mt-1 font-headline text-2xl font-semibold tracking-tight lowercase">
-            {handle}
+            {displayName}
           </h1>
         </div>
         <StatusBadge status={status} />

@@ -38,27 +38,34 @@ async function handle<T>(res: Response): Promise<T> {
 // ---- Live Input CRUD -----------------------------------------------------
 
 export async function createLiveInput(opts: {
-  creatorHandle: string;
+  /** Ethereum address of the creator (lowercase). Used as `defaultCreator` for ownership. */
+  creatorAddress: `0x${string}`;
+  /** Human-readable display name stored in meta for UI rendering. */
+  creatorDisplayName: string;
+  /** DID of the creator; stored in meta for future protocol-layer use. */
+  creatorDid?: string;
   title?: string;
   deleteRecordingAfterDays?: number;
 }): Promise<LiveInput> {
   const isProd = process.env.NEXT_PUBLIC_APP_ENV === 'production';
   const autoDelete = opts.deleteRecordingAfterDays ?? (isProd ? undefined : 30);
+  const nameSlug = opts.creatorDisplayName.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 16) || 'aevia';
 
   const res = await fetch(streamUrl('live_inputs'), {
     method: 'POST',
     headers: jsonHeaders(),
     body: JSON.stringify({
       meta: {
-        name: opts.title ?? `aevia-${opts.creatorHandle}-${Date.now()}`,
-        creator: opts.creatorHandle,
+        name: opts.title ?? `aevia-${nameSlug}-${Date.now()}`,
+        creator: opts.creatorDisplayName,
+        ...(opts.creatorDid && { creatorDid: opts.creatorDid }),
       },
       recording: {
         mode: 'automatic',
         timeoutSeconds: 30,
         requireSignedURLs: false,
       },
-      defaultCreator: opts.creatorHandle,
+      defaultCreator: opts.creatorAddress,
       ...(autoDelete !== undefined && { deleteRecordingAfterDays: autoDelete }),
     }),
   });

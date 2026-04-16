@@ -28,9 +28,9 @@ catalog:
   viem: ^2.21.54
   wagmi: ^2.14.6
 
-  # Auth (Privy)
+  # Auth (Privy — v2 SDKs)
   '@privy-io/react-auth': ^2.0.0
-  '@privy-io/server-auth': ^1.18.0
+  '@privy-io/node': ^0.1.0
 
   # Cloudflare
   '@cloudflare/next-on-pages': ^1.13.7

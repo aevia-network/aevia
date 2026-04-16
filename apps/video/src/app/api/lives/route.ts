@@ -1,5 +1,5 @@
 import { createLiveInput, listLiveInputs } from '@/lib/cloudflare/stream-client';
-import { readSession } from '@/lib/session/cookie';
+import { readAeviaSession } from '@aevia/auth/server';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const mine = url.searchParams.get('mine') === '1';
 
-  const session = mine ? await readSession() : null;
+  const session = mine ? await readAeviaSession() : null;
   if (mine && !session) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -16,12 +16,13 @@ export async function GET(request: Request) {
   try {
     const lives = await listLiveInputs();
     const filtered = mine
-      ? lives.filter((l) => l.defaultCreator === session?.handle)
+      ? lives.filter((l) => l.defaultCreator === session?.address)
       : lives.filter((l) => l.status?.current?.state === 'connected');
 
     const shaped = filtered.map((l) => ({
       uid: l.uid,
-      creator: l.defaultCreator ?? l.meta?.creator ?? 'unknown',
+      creator: l.meta?.creator ?? l.defaultCreator ?? 'unknown',
+      creatorAddress: l.defaultCreator ?? null,
       name: l.meta?.name ?? '',
       created: l.created,
       state: l.status?.current?.state ?? 'disconnected',
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await readSession();
+  const session = await readAeviaSession();
   if (!session) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -46,12 +47,14 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { title?: string };
     title = body.title;
   } catch {
-    // body is optional
+    // body optional
   }
 
   try {
     const live = await createLiveInput({
-      creatorHandle: session.handle,
+      creatorAddress: session.address,
+      creatorDisplayName: session.displayName,
+      creatorDid: session.did,
       title,
     });
     return NextResponse.json(
@@ -59,7 +62,8 @@ export async function POST(request: Request) {
         uid: live.uid,
         whipUrl: live.webRTC.url,
         whepUrl: live.webRTCPlayback.url,
-        creator: session.handle,
+        creator: session.displayName,
+        creatorAddress: session.address,
       },
       { status: 201 },
     );
