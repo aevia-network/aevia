@@ -39,6 +39,9 @@ catalogs:
     clsx:
       specifier: ^2.1.1
       version: 2.1.1
+    hls.js:
+      specifier: ^1.5.20
+      version: 1.6.16
     jose:
       specifier: ^5.9.6
       version: 5.10.0
@@ -180,6 +183,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      hls.js:
+        specifier: 'catalog:'
+        version: 1.6.16
       jose:
         specifier: 'catalog:'
         version: 5.10.0
@@ -3119,6 +3125,9 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  hls.js@1.6.16:
+    resolution: {integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==}
 
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
@@ -8792,6 +8801,8 @@ snapshots:
     optional: true
 
   help-me@5.0.0: {}
+
+  hls.js@1.6.16: {}
 
   hmac-drbg@1.0.1:
     dependencies:

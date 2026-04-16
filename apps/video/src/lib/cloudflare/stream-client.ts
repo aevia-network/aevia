@@ -1,5 +1,10 @@
 import { getServerEnv } from '../env';
-import type { CloudflareStreamApiEnvelope, LiveInput, LiveInputListItem } from './types';
+import type {
+  CloudflareStreamApiEnvelope,
+  LiveInput,
+  LiveInputListItem,
+  StreamVideo,
+} from './types';
 
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 
@@ -68,6 +73,21 @@ export async function listLiveInputs(): Promise<LiveInputListItem[]> {
   });
   const result = await handle<{ liveInputs: LiveInputListItem[] }>(res);
   return result.liveInputs ?? [];
+}
+
+/**
+ * List the videos (recordings) derived from a given live input.
+ * Returns empty array if Cloudflare has not yet produced a recording
+ * (typical immediately after a broadcast ends; recordings are processed async).
+ */
+export async function listLiveInputVideos(uid: string): Promise<StreamVideo[]> {
+  const res = await fetch(streamUrl('live_inputs', uid, 'videos'), {
+    method: 'GET',
+    headers: headers(),
+  });
+  const result = await handle<StreamVideo[] | { videos: StreamVideo[] }>(res);
+  if (Array.isArray(result)) return result;
+  return result.videos ?? [];
 }
 
 export async function deleteLiveInput(uid: string): Promise<void> {
