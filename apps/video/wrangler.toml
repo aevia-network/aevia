@@ -1,0 +1,22 @@
+name = "aevia-video"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+# KV namespace for anonymous sessions + live metadata.
+# Populate `id` after running `wrangler kv namespace create AEVIA_SESSIONS`.
+# [[kv_namespaces]]
+# binding = "AEVIA_SESSIONS"
+# id = ""
+# preview_id = ""
+
+[vars]
+NEXT_PUBLIC_APP_URL = "https://aevia.video"
+NEXT_PUBLIC_APP_ENV = "production"
+
+# Secrets go via `wrangler pages secret put <NAME>` — never in this file.
+# Required secrets (Sprint 1):
+#   STREAM_API_TOKEN
+#   STREAM_WEBHOOK_SECRET
+#   SESSION_SIGNING_KEY
+#   PRIVY_APP_SECRET

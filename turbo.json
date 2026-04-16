@@ -1,0 +1,65 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalDependencies": ["tsconfig.base.json", "biome.jsonc", ".env", ".env.local", "mise.toml"],
+  "globalEnv": [
+    "NODE_ENV",
+    "CI",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "STREAM_API_TOKEN",
+    "STREAM_WEBHOOK_SECRET",
+    "SESSION_SIGNING_KEY",
+    "PRIVY_APP_ID",
+    "PRIVY_APP_SECRET",
+    "BASE_RPC_URL",
+    "BASE_CHAIN_ID",
+    "BASESCAN_API_KEY"
+  ],
+  "globalPassThroughEnv": [
+    "NEXT_PUBLIC_APP_URL",
+    "NEXT_PUBLIC_APP_ENV",
+    "NEXT_PUBLIC_STREAM_CUSTOMER_CODE",
+    "NEXT_PUBLIC_PRIVY_APP_ID",
+    "NEXT_PUBLIC_BASE_CHAIN_ID"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "proto:generate"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "bin/**", "out/**"],
+      "env": ["NEXT_PUBLIC_*"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "proto:generate"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "proto:generate": {
+      "inputs": ["proto/**/*.proto", "buf.yaml", "buf.gen.yaml"],
+      "outputs": ["src/gen/**", "**/gen/pb/**"]
+    },
+    "proto:lint": {
+      "inputs": ["proto/**/*.proto", "buf.yaml"],
+      "outputs": []
+    },
+    "proto:breaking": {
+      "inputs": ["proto/**/*.proto", "buf.yaml"],
+      "outputs": [],
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

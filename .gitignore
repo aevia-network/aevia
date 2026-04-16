@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# Turbo
+.turbo/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build outputs
+dist/
+build/
+
+# Go
+services/*/bin/
+services/*/dist/
+vendor/
+
+# Foundry
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/*/
+!packages/contracts/broadcast/.gitkeep
+
+# Coverage
+coverage/
+*.lcov
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+.dev.vars
+
+# Wrangler
+.wrangler/
+.mf/
+.vercel/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript incremental
+*.tsbuildinfo
+
+# Testing
+playwright-report/
+playwright/.cache/
+test-results/

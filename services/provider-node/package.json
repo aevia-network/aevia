@@ -1,0 +1,15 @@
+{
+  "name": "@aevia/service-provider-node",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Aevia Provider Node — Go binary that pins content, serves chunks over libp2p/WebRTC, and earns credits via Proof of Relay.",
+  "scripts": {
+    "build": "go build -o bin/provider ./cmd/provider",
+    "dev": "go run ./cmd/provider",
+    "test": "go test -race -timeout=120s ./...",
+    "lint": "go vet ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rm -rf bin .turbo"
+  }
+}

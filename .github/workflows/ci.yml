@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_REMOTE_ONLY: true
+
+jobs:
+  # ---------- Path filter ----------
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      ts: ${{ steps.filter.outputs.ts }}
+      go: ${{ steps.filter.outputs.go }}
+      sol: ${{ steps.filter.outputs.sol }}
+      proto: ${{ steps.filter.outputs.proto }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ts:
+              - 'apps/**'
+              - 'packages/protocol/**'
+              - 'packages/ui/**'
+              - 'packages/auth/**'
+              - 'packages/libp2p-config/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              - 'turbo.json'
+              - 'tsconfig.base.json'
+              - 'biome.jsonc'
+              - '.github/workflows/ci.yml'
+            go:
+              - 'services/**'
+              - 'go.work'
+              - 'go.work.sum'
+            sol:
+              - 'packages/contracts/**'
+            proto:
+              - 'packages/protocol/proto/**'
+              - 'packages/protocol/buf.yaml'
+              - 'packages/protocol/buf.gen.yaml'
+
+  # ---------- TypeScript ----------
+  typescript:
+    name: TypeScript
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: jdx/mise-action@v2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/pnpm/store
+            .turbo
+            **/.next/cache
+          key: ts-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ts-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+
+  # ---------- Go ----------
+  go:
+    name: Go (${{ matrix.service }})
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [provider-node, recorder, manifest-svc, indexer]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ matrix.service }}-${{ hashFiles('services/**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ matrix.service }}-
+      - name: Lint
+        run: cd services/${{ matrix.service }} && go vet ./...
+      - name: Test
+        run: cd services/${{ matrix.service }} && go test -race -timeout=120s ./...
+      - name: Build
+        run: cd services/${{ matrix.service }} && go build ./...
+
+  # ---------- Solidity ----------
+  contracts:
+    name: Contracts (Foundry)
+    needs: changes
+    if: needs.changes.outputs.sol == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+      - name: Format check
+        run: cd packages/contracts && forge fmt --check
+      - name: Build
+        run: cd packages/contracts && forge build --sizes
+      - name: Test
+        run: cd packages/contracts && forge test -vvv
+
+  # ---------- Protobuf breaking change detection ----------
+  proto-breaking:
+    name: Protobuf breaking check
+    needs: changes
+    if: needs.changes.outputs.proto == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-breaking-action@v1
+        with:
+          input: packages/protocol
+          against: 'https://github.com/${{ github.repository }}.git#branch=main,subdir=packages/protocol'
+
+  # ---------- Summary (always runs) ----------
+  summary:
+    name: CI Summary
+    if: always()
+    needs: [changes, typescript, go, contracts, proto-breaking]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate
+        run: |
+          echo "TypeScript: ${{ needs.typescript.result }}"
+          echo "Go: ${{ needs.go.result }}"
+          echo "Contracts: ${{ needs.contracts.result }}"
+          echo "Proto-breaking: ${{ needs.proto-breaking.result }}"
+          if [[ "${{ needs.typescript.result }}" == "failure" || "${{ needs.go.result }}" == "failure" || "${{ needs.contracts.result }}" == "failure" || "${{ needs.proto-breaking.result }}" == "failure" ]]; then
+            echo "::error::One or more required jobs failed"
+            exit 1
+          fi

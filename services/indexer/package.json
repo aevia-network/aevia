@@ -1,0 +1,15 @@
+{
+  "name": "@aevia/service-indexer",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Aevia indexer — reads ContentRegistry / ModerationRegistry / PersistencePool events from Base and serves GraphQL queries.",
+  "scripts": {
+    "build": "go build -o bin/indexer ./cmd/indexer",
+    "dev": "go run ./cmd/indexer",
+    "test": "go test -race -timeout=120s ./...",
+    "lint": "go vet ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rm -rf bin .turbo"
+  }
+}

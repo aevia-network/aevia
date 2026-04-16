@@ -1,0 +1,44 @@
+{
+  "name": "@aevia/video",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "description": "Aevia video PWA — aevia.video. Next.js App Router on Cloudflare Pages.",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests yet' && exit 0",
+    "clean": "rm -rf .next .turbo out .vercel",
+    "pages:build": "next-on-pages",
+    "pages:dev": "wrangler pages dev .vercel/output/static",
+    "pages:deploy": "wrangler pages deploy .vercel/output/static"
+  },
+  "dependencies": {
+    "@aevia/auth": "workspace:*",
+    "@aevia/protocol": "workspace:*",
+    "@aevia/ui": "workspace:*",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwind-merge": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@tailwindcss/postcss": "catalog:",
+    "@types/node": "^22.10.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

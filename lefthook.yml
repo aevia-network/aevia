@@ -1,0 +1,43 @@
+# lefthook — git hooks manager. https://github.com/evilmartians/lefthook
+#
+# Hooks run in parallel per group.
+# Install after `pnpm install`: `pnpm lefthook install`.
+
+pre-commit:
+  parallel: true
+  commands:
+    biome-check:
+      glob: "*.{js,jsx,ts,tsx,json,jsonc}"
+      run: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+    gofmt:
+      glob: "services/**/*.go"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+    go-vet:
+      glob: "services/**/*.go"
+      run: |
+        for dir in $(find services -name "go.mod" -not -path "*/vendor/*" -exec dirname {} \; | sort -u); do
+          (cd "$dir" && go vet ./...)
+        done
+    solidity-fmt:
+      glob: "packages/contracts/**/*.sol"
+      run: |
+        export PATH="$HOME/.foundry/bin:$PATH"
+        if command -v forge >/dev/null 2>&1; then
+          cd packages/contracts && forge fmt
+        else
+          echo "forge not installed; skipping solidity-fmt. Install via foundryup."
+        fi
+      stage_fixed: true
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  parallel: true
+  commands:
+    typecheck:
+      run: pnpm turbo run typecheck --filter='[HEAD^1]'

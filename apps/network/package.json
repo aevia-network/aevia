@@ -1,0 +1,41 @@
+{
+  "name": "@aevia/network",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "description": "Aevia protocol portal — aevia.network. Docs, dev portal, gateway UI.",
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start --port 3001",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests yet' && exit 0",
+    "clean": "rm -rf .next .turbo out .vercel",
+    "pages:build": "next-on-pages",
+    "pages:deploy": "wrangler pages deploy .vercel/output/static"
+  },
+  "dependencies": {
+    "@aevia/protocol": "workspace:*",
+    "@aevia/ui": "workspace:*",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwind-merge": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "@tailwindcss/postcss": "catalog:",
+    "@types/node": "^22.10.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

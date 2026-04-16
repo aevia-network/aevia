@@ -1,0 +1,6 @@
+video:     pnpm --filter @aevia/video dev
+network:   pnpm --filter @aevia/network dev
+provider:  cd services/provider-node && go run ./cmd/provider
+recorder:  cd services/recorder && go run ./cmd/recorder
+manifest:  cd services/manifest-svc && go run ./cmd/manifest
+indexer:   cd services/indexer && go run ./cmd/indexer

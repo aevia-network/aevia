@@ -1,0 +1,15 @@
+{
+  "name": "@aevia/service-recorder",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Aevia recorder — bridges Cloudflare Stream live outputs to Cloudflare R2 persistent storage with CID manifest generation.",
+  "scripts": {
+    "build": "go build -o bin/recorder ./cmd/recorder",
+    "dev": "go run ./cmd/recorder",
+    "test": "go test -race -timeout=120s ./...",
+    "lint": "go vet ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rm -rf bin .turbo"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@aevia/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Aevia on-chain protocol — Base L2. ContentRegistry (immutable), PersistencePool, CreditEscrow, ModerationRegistry.",
+  "scripts": {
+    "build": "forge build --sizes",
+    "dev": "forge build --watch",
+    "test": "forge test -vvv",
+    "test:ci": "FOUNDRY_PROFILE=ci forge test",
+    "test:fork": "FOUNDRY_PROFILE=fork forge test",
+    "lint": "forge fmt --check",
+    "typecheck": "forge build",
+    "format": "forge fmt",
+    "clean": "forge clean && rm -rf .turbo",
+    "coverage": "forge coverage --report lcov",
+    "snapshot": "forge snapshot",
+    "deploy:sepolia": "forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify"
+  }
+}

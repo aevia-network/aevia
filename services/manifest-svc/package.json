@@ -1,0 +1,15 @@
+{
+  "name": "@aevia/service-manifest",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Aevia manifest service — generates canonical JSON-LD manifests, applies JCS canonicalization, and interacts with signer wallets.",
+  "scripts": {
+    "build": "go build -o bin/manifest ./cmd/manifest",
+    "dev": "go run ./cmd/manifest",
+    "test": "go test -race -timeout=120s ./...",
+    "lint": "go vet ./...",
+    "typecheck": "go vet ./...",
+    "clean": "rm -rf bin .turbo"
+  }
+}

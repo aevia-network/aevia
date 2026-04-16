@@ -1,0 +1,8 @@
+go 1.26
+
+use (
+	./services/provider-node
+	./services/recorder
+	./services/manifest-svc
+	./services/indexer
+)

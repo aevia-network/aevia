@@ -1,0 +1,39 @@
+{
+  "name": "@aevia/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Aevia wire format (Protobuf) and manifest schema types (JSON-LD). Single source of truth for TS and Go.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./manifest": {
+      "types": "./src/manifest.ts",
+      "default": "./src/manifest.ts"
+    },
+    "./gen/*": {
+      "types": "./src/gen/*",
+      "default": "./src/gen/*"
+    }
+  },
+  "scripts": {
+    "generate": "buf generate",
+    "lint": "buf lint && biome check .",
+    "breaking": "buf breaking --against 'https://github.com/Leeaandrob/aevia.git#branch=main,subdir=packages/protocol'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .turbo dist src/gen"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@bufbuild/protoc-gen-es": "catalog:",
+    "typescript": "catalog:"
+  }
+}

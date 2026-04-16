@@ -1,0 +1,6 @@
+.next/
+out/
+next-env.d.ts
+.vercel/
+.wrangler/
+.env*.local

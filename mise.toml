@@ -1,0 +1,14 @@
+[tools]
+node = "24"
+pnpm = "10.30.1"
+go = "1.26"
+
+# Foundry and buf installed via their own tooling to pin exact versions.
+# foundryup && foundryup --install nightly (or a specific commit for reproducibility)
+# buf: "aqua:bufbuild/buf@latest" — add when protobuf work starts
+
+[env]
+_.file = ".env.local"
+
+[settings]
+experimental = true

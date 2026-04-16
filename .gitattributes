@@ -1,0 +1,25 @@
+# Enforce LF line endings regardless of host OS
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+*.webm binary
+*.wasm binary
+
+# Auto-generated protobuf code — diff but don't count for linguist
+**/gen/** linguist-generated=true
+**/pb/** linguist-generated=true
+
+# pnpm lockfile — don't merge manually
+pnpm-lock.yaml merge=ours

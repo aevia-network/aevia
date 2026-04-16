@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Aevia — shared TypeScript config",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": false,
+
+    "skipLibCheck": true,
+    "incremental": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "paths": {
+      "@aevia/protocol": ["./packages/protocol/src"],
+      "@aevia/protocol/*": ["./packages/protocol/src/*"],
+      "@aevia/ui": ["./packages/ui/src"],
+      "@aevia/ui/*": ["./packages/ui/src/*"],
+      "@aevia/auth": ["./packages/auth/src"],
+      "@aevia/auth/*": ["./packages/auth/src/*"],
+      "@aevia/libp2p-config": ["./packages/libp2p-config/src"],
+      "@aevia/libp2p-config/*": ["./packages/libp2p-config/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", ".next", "coverage", "**/gen/**", "**/.turbo/**"]
+}

@@ -1,0 +1,16 @@
+# CODEOWNERS — required reviewers per path.
+# Populate as contributors join the project.
+
+# Default owner
+* @Leeaandrob
+
+# Protocol spec and on-chain contracts are high-stakes: require explicit review.
+/docs/protocol-spec/ @Leeaandrob
+/packages/contracts/ @Leeaandrob
+/packages/protocol/ @Leeaandrob
+
+# CI and repo-level config
+/.github/ @Leeaandrob
+/turbo.json @Leeaandrob
+/pnpm-workspace.yaml @Leeaandrob
+/package.json @Leeaandrob

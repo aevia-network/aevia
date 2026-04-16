@@ -1,0 +1,20 @@
+# Foundry artifacts
+out/
+cache/
+broadcast/*/*/
+!broadcast/.gitkeep
+
+# Submodules and deps
+lib/
+node_modules/
+
+# Environment
+.env
+.env.local
+
+# Coverage
+coverage/
+lcov.info
+
+# Foundry tooling
+.foundrytmp/

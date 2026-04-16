@@ -1,0 +1,64 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'services/*'
+
+catalog:
+  # React + Next.js core
+  react: ^19.0.0
+  react-dom: ^19.0.0
+  '@types/react': ^19.0.2
+  '@types/react-dom': ^19.0.2
+  next: ^15.1.3
+
+  # TypeScript
+  typescript: ^5.7.2
+
+  # Build tooling
+  turbo: ^2.3.3
+
+  # Protobuf / wire format
+  '@bufbuild/protobuf': ^2.2.3
+  '@bufbuild/protoc-gen-es': ^2.2.3
+
+  # Validation
+  zod: ^3.24.1
+
+  # EVM / on-chain
+  viem: ^2.21.54
+  wagmi: ^2.14.6
+
+  # Auth (Privy)
+  '@privy-io/react-auth': ^2.0.0
+  '@privy-io/server-auth': ^1.18.0
+
+  # Cloudflare
+  '@cloudflare/next-on-pages': ^1.13.7
+  '@cloudflare/workers-types': ^4.20241230.0
+  wrangler: ^3.99.0
+
+  # libp2p (browser + node — used later in Sprint 3)
+  libp2p: ^2.4.2
+  '@libp2p/webrtc': ^5.0.23
+  '@libp2p/websockets': ^9.1.2
+  '@libp2p/circuit-relay-v2': ^3.1.8
+  '@chainsafe/libp2p-yamux': ^7.0.1
+  '@chainsafe/libp2p-noise': ^16.0.1
+
+  # HLS.js (custom fragment loader — Sprint 3+)
+  'hls.js': ^1.5.20
+
+  # UI primitives (shadcn/ui uses Radix)
+  'class-variance-authority': ^0.7.1
+  clsx: ^2.1.1
+  'tailwind-merge': ^2.6.0
+  tailwindcss: ^4.0.0
+  '@tailwindcss/postcss': ^4.0.0
+  postcss: ^8.5.1
+
+  # Testing
+  '@playwright/test': ^1.49.1
+  vitest: ^2.1.8
+
+  # Session / JWT
+  jose: ^5.9.6

@@ -1,0 +1,24 @@
+{
+  "name": "@aevia/libp2p-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Shared libp2p transport, discovery, and protocol ID constants for Aevia clients and nodes.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .turbo dist"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

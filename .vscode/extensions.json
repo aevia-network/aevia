@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "golang.go",
+    "juanblanco.solidity",
+    "bufbuild.vscode-buf",
+    "bradlc.vscode-tailwindcss",
+    "tamasfe.even-better-toml",
+    "mikestead.dotenv",
+    "editorconfig.editorconfig",
+    "eamodio.gitlens",
+    "ms-azuretools.vscode-docker"
+  ]
+}

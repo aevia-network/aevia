@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package aevia.v1;
+
+// Aevia Content Manifest — wire-format representation mirrored from the
+// canonical JSON-LD form defined in docs/protocol-spec/1-manifest-schema.md.
+//
+// Sprint 0: minimal placeholder to validate the toolchain.
+// Sprint 1: full schema matching the normative manifest fields.
+
+enum ManifestType {
+  MANIFEST_TYPE_UNSPECIFIED = 0;
+  MANIFEST_TYPE_VIDEO_LIVE = 1;
+  MANIFEST_TYPE_VIDEO_VOD = 2;
+  MANIFEST_TYPE_VIDEO_CLIP = 3;
+}
+
+message Manifest {
+  string context = 1;             // JSON-LD @context URL
+  ManifestType type = 2;
+  string creator = 3;             // did:pkh:eip155:8453:0x...
+  string content_url = 4;         // ipfs://CID
+  string mime = 5;                // e.g. "video/mp4"
+  uint32 aup_version = 6;
+}
