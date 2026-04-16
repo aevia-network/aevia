@@ -27,7 +27,12 @@ async function handle<T>(res: Response): Promise<T> {
 export async function createLiveInput(opts: {
   creatorHandle: string;
   title?: string;
+  /** Auto-delete recording after this many days. Dev: 30. Production: undefined (keep forever). */
+  deleteRecordingAfterDays?: number;
 }): Promise<LiveInput> {
+  const isProd = process.env.NEXT_PUBLIC_APP_ENV === 'production';
+  const autoDelete = opts.deleteRecordingAfterDays ?? (isProd ? undefined : 30);
+
   const res = await fetch(streamUrl('live_inputs'), {
     method: 'POST',
     headers: headers(),
@@ -42,6 +47,7 @@ export async function createLiveInput(opts: {
         requireSignedURLs: false,
       },
       defaultCreator: opts.creatorHandle,
+      ...(autoDelete !== undefined && { deleteRecordingAfterDays: autoDelete }),
     }),
   });
   return handle<LiveInput>(res);
