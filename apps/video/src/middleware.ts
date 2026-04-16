@@ -47,5 +47,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/live/new/:path*'],
+  matcher: ['/dashboard/:path*'],
 };

@@ -155,6 +155,85 @@ export async function readAeviaSession(): Promise<AeviaSession | null> {
   return null;
 }
 
+type SessionDiag = Record<string, unknown>;
+
+function describeError(err: unknown): SessionDiag {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack?.split('\n').slice(0, 6).join('\n'),
+    };
+  }
+  return { value: String(err) };
+}
+
+/**
+ * Diagnostic — returns full ground truth on every step of session resolution.
+ * Intended for a debug endpoint; never wire into the happy path.
+ */
+export async function diagnoseSession(): Promise<SessionDiag> {
+  const store = await cookies();
+  const cookieNames = store.getAll().map((c) => c.name);
+  const accessToken = readCookieValue(ACCESS_COOKIE_NAMES, store);
+  const idToken = readCookieValue(IDENTITY_COOKIE_NAMES, store);
+
+  const out: SessionDiag = {
+    cookieNames,
+    hasAccessToken: Boolean(accessToken),
+    hasIdToken: Boolean(idToken),
+    appIdPresent: Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID),
+    appSecretPresent: Boolean(process.env.PRIVY_APP_SECRET),
+  };
+
+  let privy: PrivyClient;
+  try {
+    privy = getPrivyClient();
+  } catch (err) {
+    return { ...out, stage: 'client-init', error: describeError(err) };
+  }
+
+  if (accessToken) {
+    try {
+      const verified = (await privy.utils().auth().verifyAuthToken(accessToken)) as SessionDiag;
+      const userId = (verified.user_id ?? verified.userId) as string | undefined;
+      out.verifyAuthToken = { ok: true, userId, expiration: verified.expiration };
+      if (userId) {
+        try {
+          const user = (await privy.users()._get(userId)) as unknown as User;
+          out.usersGet = {
+            ok: true,
+            id: user.id,
+            linkedAccountCount: user.linked_accounts?.length ?? 0,
+            linkedAccountTypes: (user.linked_accounts ?? []).map((a) => a.type),
+            hasEthereumAddress: Boolean(pickEthereumAddress(user)),
+          };
+        } catch (err) {
+          out.usersGet = { ok: false, error: describeError(err) };
+        }
+      }
+    } catch (err) {
+      out.verifyAuthToken = { ok: false, error: describeError(err) };
+    }
+  }
+
+  if (idToken) {
+    try {
+      const user = (await privy.users().get({ id_token: idToken })) as unknown as User;
+      out.usersGetByIdToken = {
+        ok: true,
+        id: user.id,
+        linkedAccountCount: user.linked_accounts?.length ?? 0,
+        hasEthereumAddress: Boolean(pickEthereumAddress(user)),
+      };
+    } catch (err) {
+      out.usersGetByIdToken = { ok: false, error: describeError(err) };
+    }
+  }
+
+  return out;
+}
+
 /**
  * Verify a raw token from `Authorization: Bearer <jwt>` headers.
  * Accepts either an identity token or an access token.

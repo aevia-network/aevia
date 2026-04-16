@@ -16,10 +16,7 @@ export const revalidate = 0;
 
 export default async function DashboardPage() {
   const session = await readAeviaSession();
-  if (!session) {
-    console.error('[aevia-auth] /dashboard: no session, redirecting to /');
-    redirect('/');
-  }
+  if (!session) redirect('/');
 
   let myLives: LiveRowData[] = [];
   try {

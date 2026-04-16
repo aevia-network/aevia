@@ -3,12 +3,11 @@ import { redirect } from 'next/navigation';
 import { Producer } from './producer';
 
 export const runtime = 'edge';
+export const revalidate = 0;
+export const dynamic = 'force-dynamic';
 
 export default async function NewLivePage() {
   const session = await readAeviaSession();
-  if (!session) {
-    console.error('[aevia-auth] /live/new: no session, redirecting to /');
-    redirect('/');
-  }
+  if (!session) redirect('/');
   return <Producer displayName={session.displayName} address={session.address} did={session.did} />;
 }
