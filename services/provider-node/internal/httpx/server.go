@@ -69,8 +69,10 @@ func (s *Server) Handle(pattern string, h http.Handler) {
 	s.mux.Handle(pattern, h)
 }
 
-// HandleFunc is a convenience over Handle.
-func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) {
+// HandleFunc is a convenience over Handle. Signature matches
+// *http.ServeMux.HandleFunc so any content.HandlerRegistrar user works with
+// either implementation.
+func (s *Server) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
 	s.mux.HandleFunc(pattern, h)
 }
 
