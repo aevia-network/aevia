@@ -43,7 +43,8 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "cache": true
     },
     "proto:generate": {
       "inputs": ["proto/**/*.proto", "buf.yaml", "buf.gen.yaml"],

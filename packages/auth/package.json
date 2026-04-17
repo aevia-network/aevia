@@ -24,6 +24,8 @@
   "scripts": {
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf .turbo dist"
   },
   "dependencies": {
@@ -38,7 +40,8 @@
     "@types/react": "catalog:",
     "next": "catalog:",
     "react": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "next": "^15.0.0",

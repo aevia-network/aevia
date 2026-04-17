@@ -13,7 +13,7 @@ catalog:
   '@libp2p/circuit-relay-v2': ^3.1.8
   '@libp2p/webrtc': ^5.0.23
   '@libp2p/websockets': ^9.1.2
-  '@playwright/test': ^1.49.1
+  '@playwright/test': ^1.50.0
   '@privy-io/node': ^0.1.0
   '@privy-io/react-auth': ^2.0.0
   '@tailwindcss/postcss': ^4.0.0
@@ -33,7 +33,7 @@ catalog:
   turbo: ^2.3.3
   typescript: ^5.7.2
   viem: ^2.21.54
-  vitest: ^2.1.8
+  vitest: ^3.0.0
   wagmi: ^2.14.6
   wrangler: ^3.99.0
   zod: ^3.24.1

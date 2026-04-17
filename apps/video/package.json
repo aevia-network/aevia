@@ -11,7 +11,9 @@
     "start": "next start --port 3000",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'no tests yet' && exit 0",
+    "test": "echo 'no unit tests in this workspace' && exit 0",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "clean": "rm -rf .next .turbo out .vercel",
     "pages:build": "next-on-pages",
     "pages:dev": "wrangler pages dev .vercel/output/static",
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@cloudflare/next-on-pages": "catalog:",
     "@cloudflare/workers-types": "catalog:",
+    "@playwright/test": "catalog:",
     "@tailwindcss/postcss": "catalog:",
     "@types/node": "^22.10.2",
     "@types/react": "catalog:",
