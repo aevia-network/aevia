@@ -29,6 +29,38 @@ export function getServerEnv(): ServerEnv {
 }
 
 /**
+ * Relayer env — separate schema because these vars are only required by the
+ * `register-relayed` route, not by any server-rendered page. Pages that never
+ * touch the relayer must continue to render when the key is absent.
+ *
+ * Contract: callers handle the `null` result and surface it as a 500
+ * `relayer_not_configured` to the client rather than throwing. That keeps
+ * every other route healthy when the relayer is temporarily de-provisioned
+ * (e.g., funding drained and ops hasn't topped it up yet).
+ */
+const relayerSchema = z.object({
+  RELAYER_PRIVATE_KEY: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{64}$/, 'RELAYER_PRIVATE_KEY must be a 0x-prefixed 32-byte hex string'),
+  BASE_SEPOLIA_RPC_URL: z.string().url().default('https://sepolia.base.org'),
+});
+
+export type RelayerEnv = z.infer<typeof relayerSchema>;
+
+export function getRelayerEnv(): RelayerEnv | null {
+  const parsed = relayerSchema.safeParse({
+    RELAYER_PRIVATE_KEY: process.env.RELAYER_PRIVATE_KEY,
+    BASE_SEPOLIA_RPC_URL: process.env.BASE_SEPOLIA_RPC_URL,
+  });
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    console.error('[relayer] env invalid or missing:', issues);
+    return null;
+  }
+  return parsed.data;
+}
+
+/**
  * Client-side env. Only `NEXT_PUBLIC_*` vars are included — never put secrets here.
  */
 export const clientEnv = {

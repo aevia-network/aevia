@@ -10,6 +10,13 @@ pages_build_output_dir = ".vercel/output/static"
 # id = ""
 # preview_id = ""
 
+# KV namespace for the gas-sponsored registration relayer — tracks
+# per-owner free-registration counts. Created 2026-04-17.
+[[kv_namespaces]]
+binding = "AEVIA_RELAYER_COUNTS"
+id = "73fdbcc0fd124be7a5b0e3487ac55cb3"
+preview_id = "c1d3da26fc844247b16079bc93d88745"
+
 [vars]
 NEXT_PUBLIC_APP_URL = "https://aevia.video"
 NEXT_PUBLIC_APP_ENV = "production"

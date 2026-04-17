@@ -45,6 +45,8 @@ type RegisterState =
   | { kind: 'success'; block: number; txHash: string }
   | { kind: 'error'; message: string };
 
+type SponsorshipState = { kind: 'available' } | { kind: 'exhausted'; limit: number; used: number };
+
 function appChain() {
   return process.env.NEXT_PUBLIC_APP_ENV === 'production' ? base : baseSepolia;
 }
@@ -71,6 +73,7 @@ export function LiveRow({ live }: { live: LiveRowData }) {
     }
     return { kind: 'idle' };
   });
+  const [sponsorship, setSponsorship] = useState<SponsorshipState>({ kind: 'available' });
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -226,6 +229,120 @@ export function LiveRow({ live }: { live: LiveRowData }) {
     }
   };
 
+  /**
+   * Sponsored (gas-free) path.
+   *
+   * Client still signs the EIP-712 typed data; the edge route submits the
+   * on-chain tx with a platform-funded relayer key. End-to-end the user
+   * never sees a wallet "Confirm transaction" prompt — only the "Sign
+   * message" prompt they already see today.
+   */
+  const handleRegisterSponsored = async () => {
+    if (!walletsReady) return;
+    const wallet = wallets[0];
+    if (!wallet) {
+      setRegisterState({ kind: 'error', message: 'carteira indisponível' });
+      return;
+    }
+
+    const chainId = appChainId();
+    const chain = appChain();
+    const registry = contentRegistryAddress(chainId);
+    const owner = wallet.address.toLowerCase() as `0x${string}`;
+    const videoUid = live.recordingVideoUid;
+    if (!videoUid) {
+      setRegisterState({ kind: 'error', message: 'gravação ausente' });
+      return;
+    }
+
+    try {
+      setRegisterState({ kind: 'running', step: 'nonce' });
+      const publicClient = createPublicClient({ chain, transport: http() });
+
+      const nonce = (await publicClient.readContract({
+        address: registry,
+        abi: CONTENT_REGISTRY_ABI,
+        functionName: 'nonces',
+        args: [owner],
+      })) as bigint;
+
+      const manifestCid = sprint2PlaceholderManifestCid({
+        videoUid,
+        owner,
+        createdAtSeconds: Math.floor(Date.now() / 1000),
+        keccak256: viemKeccak256,
+      });
+
+      const parentCid = `0x${'0'.repeat(64)}` as `0x${string}`;
+      const policyFlags = 0;
+
+      const typedData = buildRegisterContentTypedData({
+        owner,
+        manifestCid,
+        parentCid,
+        policyFlags,
+        chainId,
+        nonce,
+        verifyingContract: registry,
+      });
+
+      setRegisterState({ kind: 'running', step: 'sign' });
+      const { signature } = await signTypedData(
+        typedData as unknown as Parameters<typeof signTypedData>[0],
+        { address: owner },
+      );
+
+      setRegisterState({ kind: 'running', step: 'send' });
+      const res = await fetch(`/api/lives/${live.uid}/register-relayed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner,
+          manifestCid,
+          parentCid,
+          policyFlags,
+          signature,
+        }),
+      });
+
+      if (res.status === 402) {
+        const body = (await res.json().catch(() => ({}))) as { limit?: number; used?: number };
+        setSponsorship({
+          kind: 'exhausted',
+          limit: body.limit ?? 10,
+          used: body.used ?? 10,
+        });
+        setRegisterState({
+          kind: 'error',
+          message: 'patrocínio esgotado — registros grátis consumidos (10/10).',
+        });
+        return;
+      }
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          reason?: string;
+          txHash?: string;
+        };
+        throw new Error(body.reason ?? body.error ?? `relayer failed with ${res.status}`);
+      }
+
+      const body = (await res.json()) as {
+        ok: boolean;
+        manifestCid: string;
+        txHash: string;
+        block: number;
+      };
+
+      setRegisterState({ kind: 'success', block: body.block, txHash: body.txHash });
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'erro desconhecido';
+      setRegisterState({ kind: 'error', message });
+    }
+  };
+
   const registerChip = (() => {
     if (registerState.kind === 'success') {
       return (
@@ -331,6 +448,20 @@ export function LiveRow({ live }: { live: LiveRowData }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {canRegister && sponsorship.kind === 'available' && (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="lowercase"
+              onClick={handleRegisterSponsored}
+              disabled={!walletsReady}
+              title="aevia paga o gás desta vez"
+            >
+              <Anchor className="size-3.5" />
+              registrar on-chain · grátis
+            </Button>
+          )}
           {canRegister && (
             <Button
               type="button"
@@ -339,9 +470,14 @@ export function LiveRow({ live }: { live: LiveRowData }) {
               className="lowercase"
               onClick={handleRegister}
               disabled={!walletsReady}
+              title={
+                sponsorship.kind === 'exhausted'
+                  ? 'patrocínio esgotado — registre pagando o gás'
+                  : 'registre pagando o próprio gás'
+              }
             >
               <Anchor className="size-3.5" />
-              registrar on-chain
+              pagar eu mesmo
             </Button>
           )}
           {registerState.kind === 'running' && (

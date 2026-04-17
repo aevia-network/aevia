@@ -1,6 +1,10 @@
-import { getLiveInput, updateLiveInput } from '@/lib/cloudflare/stream-client';
 import { readAeviaSession } from '@aevia/auth/server';
 import { NextResponse } from 'next/server';
+import {
+  normaliseRegistrationMeta,
+  persistRegistrationMeta,
+  resolveLiveOwnership,
+} from '../_lib/register-meta';
 
 export const runtime = 'edge';
 
@@ -18,9 +22,14 @@ export const runtime = 'edge';
  * is already recorded on Base Sepolia; this endpoint is purely a UX cache so
  * the dashboard does not have to re-scan the chain on every render.
  *
- * Sprint 2 ownership model: `live.defaultCreator` is the creator's wallet
- * address and cannot be forged (set at live-input creation time via the
- * server-side Cloudflare API call).
+ * Sprint 2 ownership model: `live.defaultCreator` (or the round-trip-safe
+ * `meta.creatorAddress` mirror) is the creator's wallet address and cannot
+ * be forged — it is set at live-input creation time via the server-side
+ * Cloudflare API call.
+ *
+ * Sibling route `/register-relayed` submits the on-chain tx on the
+ * creator's behalf; shared validation + persistence helpers live in
+ * `../_lib/register-meta.ts` so the two paths stay byte-compatible.
  */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const session = await readAeviaSession();
@@ -29,65 +38,44 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const { id } = await context.params;
-
-  const live = await getLiveInput(id).catch(() => null);
-  const me = session.address.toLowerCase();
-  // Cloudflare drops the top-level `defaultCreator` field silently on many
-  // account tiers — see `stream-client.ts#createLiveInput`. Prefer the
-  // round-trip-safe `meta.creatorAddress` mirror and fall back to the
-  // canonical field for legacy records backfilled out of band.
-  const metaCreator = live?.meta?.creatorAddress?.toLowerCase();
-  const defaultCreator = live?.defaultCreator?.toLowerCase();
-  if (!live || (metaCreator !== me && defaultCreator !== me)) {
+  const ownership = await resolveLiveOwnership(id, session.address);
+  if (!ownership || !ownership.owned) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  const { live } = ownership;
 
-  let body: {
-    manifestCid?: string;
-    registerTxHash?: string;
-    registerBlock?: number | string;
-  };
+  let body: unknown;
   try {
-    body = (await request.json()) as typeof body;
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
 
-  const manifestCid = body.manifestCid?.toLowerCase();
-  const txHash = body.registerTxHash?.toLowerCase();
-  const blockNumber = body.registerBlock;
-
-  // Shape validation. Manifest CID and tx hash are 32 bytes each; block
-  // number is a non-negative integer. Cloudflare Stream's meta values MUST
-  // be strings, so everything is normalized to string before storage.
-  if (!manifestCid || !/^0x[0-9a-f]{64}$/.test(manifestCid)) {
-    return NextResponse.json({ error: 'invalid manifestCid' }, { status: 400 });
+  const parsed = normaliseRegistrationMeta(body);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
-  if (!txHash || !/^0x[0-9a-f]{64}$/.test(txHash)) {
-    return NextResponse.json({ error: 'invalid registerTxHash' }, { status: 400 });
-  }
-  const blockNum = typeof blockNumber === 'string' ? Number(blockNumber) : blockNumber;
-  if (typeof blockNum !== 'number' || !Number.isFinite(blockNum) || blockNum < 0) {
-    return NextResponse.json({ error: 'invalid registerBlock' }, { status: 400 });
-  }
+  const meta = parsed.value;
 
   // Idempotency: if a manifest CID is already recorded for this live, refuse
   // to overwrite. The on-chain `ContentRegistry` itself rejects duplicate
   // registrations, but this guard ensures the client cannot accidentally
   // clobber an earlier successful record with a different one.
-  if (live.meta?.manifestCid && live.meta.manifestCid !== manifestCid) {
+  if (live.meta?.manifestCid && live.meta.manifestCid !== meta.manifestCid) {
     return NextResponse.json({ error: 'manifestCid already set for this live' }, { status: 409 });
   }
 
   try {
-    await updateLiveInput(id, {
-      meta: {
-        manifestCid,
-        registerTxHash: txHash,
-        registerBlock: String(blockNum),
+    await persistRegistrationMeta(id, meta);
+    return NextResponse.json(
+      {
+        ok: true,
+        manifestCid: meta.manifestCid,
+        txHash: meta.registerTxHash,
+        block: meta.registerBlock,
       },
-    });
-    return NextResponse.json({ ok: true, manifestCid, txHash, block: blockNum }, { status: 200 });
+      { status: 200 },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'unknown' },
