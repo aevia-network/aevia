@@ -21,8 +21,9 @@ export default async function DashboardPage() {
   let myLives: LiveRowData[] = [];
   try {
     const all = await listLiveInputs();
+    const me = session.address.toLowerCase();
     myLives = all
-      .filter((l) => l.defaultCreator?.toLowerCase() === session.address.toLowerCase())
+      .filter((l) => l.defaultCreator?.toLowerCase() === me)
       .map((l) => ({
         uid: l.uid,
         state: (l.status?.current?.state as LiveRowData['state']) ?? 'disconnected',

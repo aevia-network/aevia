@@ -85,7 +85,12 @@ export async function listLiveInputs(): Promise<LiveInputListItem[]> {
     method: 'GET',
     headers: jsonHeaders(),
   });
-  const result = await handle<{ liveInputs: LiveInputListItem[] }>(res);
+  // Cloudflare Stream's `/live_inputs` GET returns `result` as a bare array;
+  // only the equivalent *create* response wraps it as `{liveInputs: [...]}`.
+  // Keep the object-envelope branch as a defensive fallback in case the API
+  // surface normalises over time.
+  const result = await handle<LiveInputListItem[] | { liveInputs: LiveInputListItem[] }>(res);
+  if (Array.isArray(result)) return result;
   return result.liveInputs ?? [];
 }
 
