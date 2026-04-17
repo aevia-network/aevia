@@ -3,7 +3,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { clientEnv } from '@/lib/env';
 import { type RecorderSession, startRecorder } from '@/lib/webrtc/recorder';
 import { type WhipSession, publishWhip } from '@/lib/webrtc/whip';
 import { CircleStop, Copy, Radio, Rewind, UploadCloud, VideoOff } from 'lucide-react';
@@ -168,7 +167,12 @@ export function Producer({
     };
   }, []);
 
-  const shareUrl = created ? `${clientEnv.appUrl.replace(/\/$/, '')}/live/${created.uid}` : null;
+  // Derive from the current origin rather than `clientEnv.appUrl` — the
+  // latter falls back to `localhost:3000` whenever `NEXT_PUBLIC_APP_URL`
+  // isn't set at build time, leaking localhost links into production
+  // shares. The Producer is always rendered client-side after hydration,
+  // so `window.location.origin` is always available.
+  const shareUrl = created ? `${window.location.origin}/live/${created.uid}` : null;
 
   const copyShareUrl = () => {
     if (!shareUrl) return;

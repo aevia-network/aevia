@@ -1,17 +1,16 @@
 /**
- * @aevia/auth — shared auth primitives for Aevia clients and servers.
+ * @aevia/auth — shared auth primitives for Aevia.
  *
- * - Main entry (`@aevia/auth`): DID helpers, types, chain constants (safe on edge + client).
- * - `@aevia/auth/client`: React SDK wrapper (`'use client'`).
- * - `@aevia/auth/server`: server-side session + token verification (`next/headers` + Privy server SDK).
+ * Subpath exports keep client-only deps (Privy React SDK + viem chain
+ * metadata) out of server bundles:
+ *
+ * - `@aevia/auth` (this file): DID helpers, chain-id constants, types.
+ *   Zero transitive deps — safe on edge, server, and client.
+ * - `@aevia/auth/client`: Privy React provider (`'use client'`). Pulls
+ *   react-auth + viem; must only be imported from client components.
+ * - `@aevia/auth/server`: session + token verification. Pulls jose only.
  */
 
 export { addressToDid, didToAddress, didChainId, shortAddress } from './did';
-export {
-  AEVIA_CHAIN_ID_MAINNET,
-  AEVIA_CHAIN_ID_SEPOLIA,
-  base,
-  baseSepolia,
-  defaultChain,
-} from './chains';
+export { AEVIA_CHAIN_ID_MAINNET, AEVIA_CHAIN_ID_SEPOLIA } from './chains';
 export type { AeviaDid, AeviaSession, LoginMethod } from './types';

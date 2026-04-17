@@ -2,7 +2,7 @@
 
 import { PrivyProvider } from '@privy-io/react-auth';
 import type { ReactNode } from 'react';
-import { base, baseSepolia, defaultChain } from './chains';
+import { base, baseSepolia, defaultChain } from './chains-viem';
 
 export interface AeviaPrivyProviderProps {
   appId: string;
