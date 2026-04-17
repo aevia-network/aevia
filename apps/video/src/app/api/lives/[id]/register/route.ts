@@ -31,7 +31,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
 
   const live = await getLiveInput(id).catch(() => null);
-  if (!live || live.defaultCreator?.toLowerCase() !== session.address.toLowerCase()) {
+  const me = session.address.toLowerCase();
+  // Cloudflare drops the top-level `defaultCreator` field silently on many
+  // account tiers — see `stream-client.ts#createLiveInput`. Prefer the
+  // round-trip-safe `meta.creatorAddress` mirror and fall back to the
+  // canonical field for legacy records backfilled out of band.
+  const metaCreator = live?.meta?.creatorAddress?.toLowerCase();
+  const defaultCreator = live?.defaultCreator?.toLowerCase();
+  if (!live || (metaCreator !== me && defaultCreator !== me)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

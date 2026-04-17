@@ -170,8 +170,16 @@ export interface RegisterContentTypedData {
     manifestCid: `0x${string}`;
     parentCid: `0x${string}`;
     policyFlags: number;
-    chainId: bigint;
-    nonce: bigint;
+    // uint256 fields emitted as plain JS numbers. Privy's modal `JSON.stringify`s
+    // the message for preview and breaks on `bigint`; MetaMask, conversely,
+    // misencodes decimal-string values for uint256 (hashes the UTF-8 bytes of
+    // the string instead of parsing to a 32-byte word), which yields a
+    // signature the on-chain ECDSA recovery rejects with `InvalidSignature`.
+    // Plain numbers round-trip through JSON, hash correctly in viem's EIP-712
+    // codec, and are safe here because Sprint 2 nonces start at 0 and stay
+    // well under `Number.MAX_SAFE_INTEGER` for the foreseeable future.
+    chainId: number;
+    nonce: number;
   };
 }
 
@@ -203,6 +211,12 @@ export function buildRegisterContentTypedData(
     throw new Error('policyFlags top bit (0x80) is reserved for moderator use');
   }
 
+  if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(
+      `nonce ${nonce} exceeds Number.MAX_SAFE_INTEGER; typed-data emitter needs a bigint-safe path`,
+    );
+  }
+
   return {
     domain: {
       name: CONTENT_REGISTRY_DOMAIN_NAME,
@@ -217,8 +231,8 @@ export function buildRegisterContentTypedData(
       manifestCid,
       parentCid,
       policyFlags,
-      chainId: BigInt(chainId),
-      nonce,
+      chainId,
+      nonce: Number(nonce),
     },
   };
 }

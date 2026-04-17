@@ -25,9 +25,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const live = await getLiveInput(liveInputId).catch(() => null);
   if (!live) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  // Lowercase-compare — Cloudflare echoes whatever was stored, while session
-  // addresses are normalised to lowercase in `@aevia/auth`.
-  if ((live.defaultCreator ?? '').toLowerCase() !== session.address.toLowerCase()) {
+  const me = session.address.toLowerCase();
+  // Cloudflare drops the top-level `defaultCreator` silently on most account
+  // tiers; prefer our `meta.creatorAddress` mirror and fall back to the
+  // canonical field for live inputs backfilled out of band.
+  const metaCreator = live.meta?.creatorAddress?.toLowerCase();
+  const defaultCreator = live.defaultCreator?.toLowerCase();
+  if (metaCreator !== me && defaultCreator !== me) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 

@@ -113,12 +113,12 @@ export function LiveRow({ live }: { live: LiveRowData }) {
     try {
       setRegisterState({ kind: 'running', step: 'nonce' });
 
-      // Ensure the wallet is on the right chain before signing / sending.
-      // `switchChain` is idempotent — safe to call when already on-target.
-      if (wallet.chainId !== `eip155:${chainId}`) {
-        await wallet.switchChain(chainId);
-      }
-
+      // Read the nonce via our own viem client (bound to Base Sepolia RPC),
+      // not via the wallet. This works regardless of which chain the wallet
+      // is currently connected to, so we can defer the costly `switchChain`
+      // round-trip until right before the tx send — Privy's switchChain has
+      // been observed to time out with "Request expired" on some MetaMask
+      // installs, and we want the flow to reach the signing prompt first.
       const publicClient = createPublicClient({ chain, transport: http() });
 
       const nonce = (await publicClient.readContract({
@@ -174,6 +174,19 @@ export function LiveRow({ live }: { live: LiveRowData }) {
       });
 
       setRegisterState({ kind: 'running', step: 'send' });
+      // Only switch chain now, right before the tx: signing doesn't require
+      // it (typed data commits the chainId explicitly), and deferring keeps
+      // the user from hitting MetaMask's switch prompt on every retry.
+      // Wrap in try/catch so "Request expired" from Privy doesn't kill the
+      // flow — `sendTransaction` will throw a clearer error if the wallet is
+      // truly on the wrong chain.
+      if (wallet.chainId !== `eip155:${chainId}`) {
+        try {
+          await wallet.switchChain(chainId);
+        } catch (err) {
+          console.error('[register] switchChain failed, continuing:', err);
+        }
+      }
       const { hash: txHash } = await sendTransaction(
         {
           to: registry,

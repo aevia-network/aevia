@@ -37,7 +37,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   const live = await getLiveInput(liveInputId).catch(() => null);
   if (!live) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  if ((live.defaultCreator ?? '').toLowerCase() !== session.address.toLowerCase()) {
+  const me = session.address.toLowerCase();
+  const metaCreator = live.meta?.creatorAddress?.toLowerCase();
+  const defaultCreator = live.defaultCreator?.toLowerCase();
+  if (metaCreator !== me && defaultCreator !== me) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
