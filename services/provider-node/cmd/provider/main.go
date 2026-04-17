@@ -1,23 +1,22 @@
 // Aevia Provider Node — serves pinned HLS content over both plain HTTP and
 // libp2p streams (via go-libp2p-http). Milestone 1 brings the libp2p host
 // online with a persistent identity, a dual-transport HTTP mux (libp2p
-// stream + plain TCP), and fixture HLS segments. DHT, relay, and
-// BadgerDB-backed pinning land in subsequent milestones.
+// stream + plain TCP), fixture HLS segments, and unified config. DHT, relay,
+// and BadgerDB-backed pinning land in subsequent milestones.
 package main
 
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/config"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/content"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
@@ -25,25 +24,32 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		log.Fatalf("aevia provider-node: %v", err)
 	}
 }
 
-func run() error {
-	dataDir := flag.String("data-dir", defaultDataDir(), "directory for persistent state (identity key, pinning storage)")
-	listen := flag.String("listen", "/ip4/0.0.0.0/tcp/0", "libp2p multiaddr to listen on")
-	httpAddr := flag.String("http-addr", "127.0.0.1:8080", "plain HTTP listen address for Provider Público path")
-	flag.Parse()
+func run(args []string) error {
+	cfg, err := config.Parse(args)
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 
-	priv, err := identity.LoadOrCreate(*dataDir)
+	if cfg.Mode == config.ModeRelay {
+		// Relay mode is implemented in a later milestone; for now refuse
+		// to boot so operators don't silently run a provider when they
+		// asked for a relay.
+		return errors.New("relay mode is not implemented yet (Milestone 4 adds Circuit Relay v2, DHT bootstrap, tracker)")
+	}
+
+	priv, err := identity.LoadOrCreate(cfg.DataDir)
 	if err != nil {
 		return fmt.Errorf("identity: %w", err)
 	}
 
 	n, err := node.New(node.Config{
 		PrivKey:     priv,
-		ListenAddrs: []string{*listen},
+		ListenAddrs: []string{cfg.Listen},
 	})
 	if err != nil {
 		return fmt.Errorf("node boot: %w", err)
@@ -52,7 +58,7 @@ func run() error {
 	srv := httpx.NewServer(n.Host())
 	content.Register(srv)
 
-	log.Printf("aevia provider-node started peer_id=%s data_dir=%s listen=%s http=%s", n.PeerID(), *dataDir, *listen, *httpAddr)
+	log.Printf("aevia provider-node started mode=%s peer_id=%s data_dir=%s listen=%s http=%s", cfg.Mode, n.PeerID(), cfg.DataDir, cfg.Listen, cfg.HTTPAddr)
 	for _, addr := range n.Host().Addrs() {
 		log.Printf("listening libp2p_addr=%s/p2p/%s", addr, n.PeerID())
 	}
@@ -60,7 +66,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tcpListener, err := net.Listen("tcp", *httpAddr)
+	tcpListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return fmt.Errorf("http listen: %w", err)
 	}
@@ -93,12 +99,4 @@ func run() error {
 	}
 	log.Println("shutdown complete")
 	return nil
-}
-
-func defaultDataDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return filepath.Join(".", ".aevia-provider-node")
-	}
-	return filepath.Join(home, ".aevia", "provider-node")
 }
