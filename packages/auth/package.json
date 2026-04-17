@@ -27,8 +27,9 @@
     "clean": "rm -rf .turbo dist"
   },
   "dependencies": {
-    "@privy-io/react-auth": "catalog:",
     "@privy-io/node": "catalog:",
+    "@privy-io/react-auth": "catalog:",
+    "jose": "catalog:",
     "viem": "catalog:",
     "zod": "catalog:"
   },

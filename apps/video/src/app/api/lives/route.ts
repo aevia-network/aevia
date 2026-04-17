@@ -39,8 +39,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await readAeviaSession();
   if (!session) {
+    console.error('[api/lives POST] readAeviaSession returned null');
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
+  console.error(`[api/lives POST] session ok userId=${session.userId}`);
 
   let title: string | undefined;
   try {

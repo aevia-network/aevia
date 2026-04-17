@@ -3,6 +3,12 @@ import { cookies } from 'next/headers';
 import { AEVIA_CHAIN_ID_MAINNET } from './chains';
 import { addressToDid, shortAddress } from './did';
 import type { AeviaSession, LoginMethod } from './types';
+import {
+  type PrivyIdentityTokenPayload,
+  type PrivyLinkedAccountLite,
+  parseLinkedAccounts,
+  verifyPrivyJwt,
+} from './verify-edge';
 
 let _client: PrivyClient | null = null;
 
@@ -104,46 +110,76 @@ function readCookieValue(names: readonly string[], store: Awaited<ReturnType<typ
  * If either path succeeds but the user has no Ethereum wallet, we continue
  * to the next path. Returns null only when every reachable path fails.
  */
+/**
+ * Build a `User`-shaped object from an identity-token payload's inline
+ * `linked_accounts`. The identity token carries enough metadata to resolve
+ * a session without any API call — avoids the `users()._get` round-trip
+ * that would otherwise be needed on the access-token path.
+ */
+function userFromIdentityTokenPayload(
+  payload: PrivyIdentityTokenPayload,
+  linkedAccounts: PrivyLinkedAccountLite[],
+): User | null {
+  if (!linkedAccounts.length) return null;
+  return {
+    id: payload.sub,
+    created_at: payload.cr ? Number(payload.cr) : 0,
+    linked_accounts: linkedAccounts,
+    // Surface only what downstream helpers consume; remaining fields are
+    // unused by `userToSession` and safely coerced.
+  } as unknown as User;
+}
+
 export async function readAeviaSession(): Promise<AeviaSession | null> {
-  let privy: PrivyClient;
-  try {
-    privy = getPrivyClient();
-  } catch {
-    return null;
-  }
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  if (!appId) return null;
 
   const store = await cookies();
   const idToken = readCookieValue(IDENTITY_COOKIE_NAMES, store);
   const accessToken = readCookieValue(ACCESS_COOKIE_NAMES, store);
 
+  // Identity-token path (preferred) — token carries the full linked-account
+  // list inline, so one local signature verification resolves the session
+  // with zero network calls.
   if (idToken) {
     try {
-      const user = await privy.users().get({ id_token: idToken });
-      const session = userToSession(user);
-      if (session) return session;
-      console.error('[aevia-auth] id-token path: user has no ethereum wallet');
+      const payload = await verifyPrivyJwt<PrivyIdentityTokenPayload>(idToken, appId);
+      const accounts = parseLinkedAccounts(payload);
+      const user = userFromIdentityTokenPayload(payload, accounts);
+      if (user) {
+        const session = userToSession(user, payload.exp ?? 0);
+        if (session) return session;
+        console.error('[aevia-auth] id-token path: user has no ethereum wallet');
+      } else {
+        console.error('[aevia-auth] id-token path: linked_accounts missing or empty');
+      }
     } catch (err) {
-      console.error('[aevia-auth] id-token path failed:', err);
+      console.error('[aevia-auth] id-token verification failed:', err);
     }
   }
 
+  // Access-token path (fallback) — access tokens do not carry
+  // `linked_accounts` in their payload, so after local verification we
+  // still have to fetch the user via the Privy API.
   if (accessToken) {
     try {
-      const verified = await privy.utils().auth().verifyAuthToken(accessToken);
-      const userId =
-        (verified as { user_id?: string; userId?: string }).user_id ??
-        (verified as { userId?: string }).userId;
-      if (userId) {
-        const user = await privy.users()._get(userId);
-        const expiresAt = Number((verified as { expiration?: number | string }).expiration ?? 0);
-        const session = userToSession(user, expiresAt);
+      const payload = await verifyPrivyJwt(accessToken, appId);
+      if (payload.sub) {
+        let privy: PrivyClient;
+        try {
+          privy = getPrivyClient();
+        } catch {
+          return null;
+        }
+        const user = await privy.users()._get(payload.sub);
+        const session = userToSession(user, payload.exp ?? 0);
         if (session) return session;
         console.error('[aevia-auth] access-token path: user has no ethereum wallet', {
-          userId,
+          userId: payload.sub,
         });
       }
     } catch (err) {
-      console.error('[aevia-auth] access-token path failed:', err);
+      console.error('[aevia-auth] access-token verification failed:', err);
     }
   }
 
@@ -176,61 +212,46 @@ export async function diagnoseSession(): Promise<SessionDiag> {
   const cookieNames = store.getAll().map((c) => c.name);
   const accessToken = readCookieValue(ACCESS_COOKIE_NAMES, store);
   const idToken = readCookieValue(IDENTITY_COOKIE_NAMES, store);
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
   const out: SessionDiag = {
     cookieNames,
     hasAccessToken: Boolean(accessToken),
     hasIdToken: Boolean(idToken),
-    appIdPresent: Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID),
+    appIdPresent: Boolean(appId),
     appSecretPresent: Boolean(process.env.PRIVY_APP_SECRET),
+    hasRefreshToken: Boolean(
+      store.get('privy-session')?.value ?? store.get('__Host-privy-session')?.value,
+    ),
   };
 
-  let privy: PrivyClient;
-  try {
-    privy = getPrivyClient();
-  } catch (err) {
-    return { ...out, stage: 'client-init', error: describeError(err) };
+  if (!appId) return out;
+
+  if (idToken) {
+    try {
+      const payload = await verifyPrivyJwt<PrivyIdentityTokenPayload>(idToken, appId);
+      const accounts = parseLinkedAccounts(payload);
+      out.verifyIdToken = {
+        ok: true,
+        userId: payload.sub,
+        exp: payload.exp,
+        linkedAccountCount: accounts.length,
+        linkedAccountTypes: accounts.map((a) => a.type),
+        hasEthereumAddress: accounts.some(
+          (a) => a.type === 'wallet' && a.chain_type === 'ethereum' && a.address,
+        ),
+      };
+    } catch (err) {
+      out.verifyIdToken = { ok: false, error: describeError(err) };
+    }
   }
 
   if (accessToken) {
     try {
-      const verified = (await privy.utils().auth().verifyAuthToken(accessToken)) as SessionDiag;
-      const userId = (verified.user_id ?? verified.userId) as string | undefined;
-      out.verifyAuthToken = { ok: true, userId, expiration: verified.expiration };
-      if (userId) {
-        try {
-          const user = (await privy.users()._get(userId)) as unknown as User;
-          out.usersGet = {
-            ok: true,
-            id: user.id,
-            linkedAccountCount: user.linked_accounts?.length ?? 0,
-            linkedAccountTypes: (user.linked_accounts ?? []).map((a) => a.type),
-            hasEthereumAddress: Boolean(pickEthereumAddress(user)),
-          };
-        } catch (err) {
-          out.usersGet = { ok: false, error: describeError(err) };
-        }
-      }
+      const payload = await verifyPrivyJwt(accessToken, appId);
+      out.verifyAccessToken = { ok: true, userId: payload.sub, exp: payload.exp };
     } catch (err) {
-      out.verifyAuthToken = { ok: false, error: describeError(err) };
-    }
-  }
-
-  out.hasRefreshToken = Boolean(
-    store.get('privy-session')?.value ?? store.get('__Host-privy-session')?.value,
-  );
-
-  if (idToken) {
-    try {
-      const user = (await privy.users().get({ id_token: idToken })) as unknown as User;
-      out.usersGetByIdToken = {
-        ok: true,
-        id: user.id,
-        linkedAccountCount: user.linked_accounts?.length ?? 0,
-        hasEthereumAddress: Boolean(pickEthereumAddress(user)),
-      };
-    } catch (err) {
-      out.usersGetByIdToken = { ok: false, error: describeError(err) };
+      out.verifyAccessToken = { ok: false, error: describeError(err) };
     }
   }
 
@@ -238,38 +259,34 @@ export async function diagnoseSession(): Promise<SessionDiag> {
 }
 
 /**
- * Verify a raw token from `Authorization: Bearer <jwt>` headers.
- * Accepts either an identity token or an access token.
+ * Verify a raw token from `Authorization: Bearer <jwt>` headers. Uses the
+ * same local JWKS verification as `readAeviaSession` for edge safety —
+ * accepts either an identity token (payload carries `linked_accounts`) or
+ * an access token (payload only carries `sub`, falls back to a Privy API
+ * lookup for the full user).
  */
 export async function verifyBearerToken(token: string): Promise<AeviaSession | null> {
-  let privy: PrivyClient;
-  try {
-    privy = getPrivyClient();
-  } catch {
-    return null;
-  }
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  if (!appId) return null;
 
   try {
-    const verified = await privy.utils().auth().verifyAuthToken(token);
-    const userId =
-      (verified as { user_id?: string; userId?: string }).user_id ??
-      (verified as { userId?: string }).userId;
-    if (userId) {
-      const user = await privy.users()._get(userId);
-      const expiresAt = Number((verified as { expiration?: number | string }).expiration ?? 0);
-      const session = userToSession(user, expiresAt);
+    const payload = await verifyPrivyJwt<PrivyIdentityTokenPayload>(token, appId);
+    const accounts = parseLinkedAccounts(payload);
+    if (accounts.length) {
+      const user = userFromIdentityTokenPayload(payload, accounts);
+      if (user) {
+        const session = userToSession(user, payload.exp ?? 0);
+        if (session) return session;
+      }
+    }
+    if (payload.sub) {
+      const privy = getPrivyClient();
+      const user = await privy.users()._get(payload.sub);
+      const session = userToSession(user, payload.exp ?? 0);
       if (session) return session;
     }
   } catch (err) {
-    console.error('[aevia-auth] bearer access-token path failed:', err);
-  }
-
-  try {
-    const user = await privy.users().get({ id_token: token });
-    const session = userToSession(user);
-    if (session) return session;
-  } catch (err) {
-    console.error('[aevia-auth] bearer id-token path failed:', err);
+    console.error('[aevia-auth] bearer verification failed:', err);
   }
 
   return null;
