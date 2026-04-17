@@ -89,21 +89,20 @@ function readCookieValue(names: readonly string[], store: Awaited<ReturnType<typ
 /**
  * Read and verify the current user's Privy session from cookies.
  *
- * Resolution order chosen for determinism (so every request that sees the
- * same cookies returns the same answer — critical to avoid redirect loops
- * between `/` and `/dashboard`):
+ * Resolution order:
  *
- * 1. Access-token path (preferred) — verify via `utils().auth().verifyAuthToken`,
- *    then load the full user via `users()._get(userId)`. This always yields
- *    a complete `linked_accounts` array.
- * 2. Identity-token path (fallback) — `users().get({id_token})`. The identity
- *    token can be size-limited and occasionally ships a partial user with no
- *    wallet entries; using it only as fallback prevents returning null when a
- *    valid session exists.
+ * 1. **Identity-token path (preferred)** — `users().get({id_token})`. The
+ *    identity token lives for days / weeks (not 1 h like the access token)
+ *    and Privy validates it server-side in the API call, so we bypass the
+ *    local `jose` + JWKS path that intermittently fails on Cloudflare's
+ *    edge runtime with "Failed to verify authentication token".
+ * 2. **Access-token path (fallback)** — verify via
+ *    `utils().auth().verifyAuthToken` and fetch the user by id. Only used
+ *    when the id-token is absent (e.g. Privy app has not enabled identity
+ *    tokens yet).
  *
- * If either path succeeds but the user object has no Ethereum wallet, we
- * continue to the next path instead of returning null early. Returns null
- * only when every reachable path fails.
+ * If either path succeeds but the user has no Ethereum wallet, we continue
+ * to the next path. Returns null only when every reachable path fails.
  */
 export async function readAeviaSession(): Promise<AeviaSession | null> {
   let privy: PrivyClient;
@@ -114,8 +113,19 @@ export async function readAeviaSession(): Promise<AeviaSession | null> {
   }
 
   const store = await cookies();
-  const accessToken = readCookieValue(ACCESS_COOKIE_NAMES, store);
   const idToken = readCookieValue(IDENTITY_COOKIE_NAMES, store);
+  const accessToken = readCookieValue(ACCESS_COOKIE_NAMES, store);
+
+  if (idToken) {
+    try {
+      const user = await privy.users().get({ id_token: idToken });
+      const session = userToSession(user);
+      if (session) return session;
+      console.error('[aevia-auth] id-token path: user has no ethereum wallet');
+    } catch (err) {
+      console.error('[aevia-auth] id-token path failed:', err);
+    }
+  }
 
   if (accessToken) {
     try {
@@ -137,19 +147,8 @@ export async function readAeviaSession(): Promise<AeviaSession | null> {
     }
   }
 
-  if (idToken) {
-    try {
-      const user = await privy.users().get({ id_token: idToken });
-      const session = userToSession(user);
-      if (session) return session;
-      console.error('[aevia-auth] id-token path: user has no ethereum wallet');
-    } catch (err) {
-      console.error('[aevia-auth] id-token path failed:', err);
-    }
-  }
-
   if (!accessToken && !idToken) {
-    console.error('[aevia-auth] no privy cookies present on protected request');
+    console.error('[aevia-auth] no usable privy cookies on protected request');
   }
 
   return null;
@@ -216,6 +215,10 @@ export async function diagnoseSession(): Promise<SessionDiag> {
       out.verifyAuthToken = { ok: false, error: describeError(err) };
     }
   }
+
+  out.hasRefreshToken = Boolean(
+    store.get('privy-session')?.value ?? store.get('__Host-privy-session')?.value,
+  );
 
   if (idToken) {
     try {
