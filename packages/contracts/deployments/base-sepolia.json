@@ -1,0 +1,16 @@
+{
+  "chainId": 84532,
+  "contracts": {
+    "ContentRegistry": {
+      "address": "0x07ffbcB245bcD8aA08F8dA75B2AeDE750d5592F0",
+      "deployBlock": 40345592,
+      "deployTxHash": "0xdfd8c57b69ea02311fa594144a37f16a419b1858e6eef2fb8e9da150ae458562",
+      "deploymentTimestamp": "2026-04-17T20:57:51.882Z",
+      "deployer": "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+      "domainSeparator": "0x2c78e842aafb062367f91fb28e747b6cf70d898dcbe60089f7f152a7d5eb831d",
+      "registerTypehash": "0x8c8ee0c01f85e8e70588bfddbac469cf565f6c12435948d2b54b5b7fda771415",
+      "domainName": "Aevia ContentRegistry",
+      "domainVersion": "1"
+    }
+  }
+}

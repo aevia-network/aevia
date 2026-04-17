@@ -20,12 +20,6 @@ function jsonHeaders(): HeadersInit {
   };
 }
 
-function authHeader(): HeadersInit {
-  return {
-    Authorization: `Bearer ${getServerEnv().STREAM_API_TOKEN}`,
-  };
-}
-
 async function handle<T>(res: Response): Promise<T> {
   const envelope = (await res.json()) as CloudflareStreamApiEnvelope<T>;
   if (!res.ok || !envelope.success) {
@@ -58,6 +52,12 @@ export async function createLiveInput(opts: {
       meta: {
         name: opts.title ?? `aevia-${nameSlug}-${Date.now()}`,
         creator: opts.creatorDisplayName,
+        // Cloudflare silently drops the top-level `defaultCreator` field for
+        // most account tiers, leaving it `null` on GET and breaking ownership
+        // filters. Mirror the creator address into user-controlled `meta`
+        // where round-tripping is guaranteed. Always lowercase so filters
+        // never need to normalise. Always store, never gate by chain-type.
+        creatorAddress: opts.creatorAddress.toLowerCase(),
         ...(opts.creatorDid && { creatorDid: opts.creatorDid }),
       },
       recording: {
@@ -160,31 +160,90 @@ export async function deleteVideo(uid: string): Promise<void> {
 }
 
 /**
- * Upload a video blob to Cloudflare Stream using the basic upload endpoint.
- * Cloudflare transcodes the result to HLS + DASH automatically.
+ * Create a Cloudflare Stream Direct Creator Upload (tus resumable).
  *
- * Used by the MediaRecorder client-side path because Cloudflare Stream's
- * WebRTC (WHIP) beta does not yet produce server-side recordings.
+ * This is the preferred path for MediaRecorder blobs: the client uploads the
+ * bytes directly to Cloudflare's upload URL, bypassing the ~100 MiB Worker
+ * request-body limit and removing double-bandwidth through our edge.
  *
- * Limits: file size ≤ 200 MiB, request body ≤ 100 MiB for Workers free tier.
- * For alpha broadcasts (<5 min at 2.5 Mbps) the payload is well under both.
+ * Cloudflare's API expects a tus `POST /stream?direct_user=true` with
+ * `Tus-Resumable: 1.0.0`, `Upload-Length`, and `Upload-Metadata` headers.
+ * The 201 response carries:
+ *   - `Location`: the one-shot upload URL the client hands to tus-js-client
+ *   - `stream-media-id`: the video UID we persist on the live input
+ *
+ * Docs: https://developers.cloudflare.com/stream/uploading-videos/direct-creator-uploads/#using-tus-recommended-for-videos-over-200mb
  */
-export async function uploadVideoBlob(
-  file: File | Blob,
-  meta: Record<string, string>,
-): Promise<StreamVideo> {
-  const form = new FormData();
-  form.append(
-    'file',
-    file instanceof File ? file : new File([file], 'recording.webm', { type: file.type }),
-  );
-  form.append('meta', JSON.stringify(meta));
-  form.append('requireSignedURLs', 'false');
+export interface DirectUploadResult {
+  uploadUrl: string;
+  videoUid: string;
+}
 
-  const res = await fetch(streamUrl(), {
-    method: 'POST',
-    headers: authHeader(),
-    body: form,
+export interface DirectUploadOptions {
+  /** Live input UID this recording belongs to. */
+  liveInputId: string;
+  /** Ethereum address of the creator (lowercase). */
+  creatorAddress: string;
+  /** Human-readable display name stored in meta for UI rendering. */
+  creatorDisplayName: string;
+  /** DID of the creator; stored in meta for future protocol-layer use. */
+  creatorDid?: string;
+  /** Expected byte length of the upload. Must be ≤ Cloudflare's Stream quota. */
+  uploadLength: number;
+}
+
+/**
+ * tus `Upload-Metadata` is a comma-separated list of `key base64(value)` pairs.
+ * Use `btoa(unescape(encodeURIComponent(v)))` to survive UTF-8 display names.
+ */
+function encodeTusMetadata(pairs: Record<string, string>): string {
+  return Object.entries(pairs)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${k} ${btoa(unescape(encodeURIComponent(v)))}`)
+    .join(',');
+}
+
+export async function createDirectUpload(opts: DirectUploadOptions): Promise<DirectUploadResult> {
+  const metaName = `aevia-${opts.liveInputId}`;
+  const tusMeta = encodeTusMetadata({
+    name: metaName,
+    liveInputId: opts.liveInputId,
+    creator: opts.creatorDisplayName,
+    creatorAddress: opts.creatorAddress,
+    ...(opts.creatorDid ? { creatorDid: opts.creatorDid } : {}),
+    source: 'whip-client-recorder',
+    requiresignedurls: 'false',
   });
-  return handle<StreamVideo>(res);
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${getServerEnv().STREAM_API_TOKEN}`,
+    'Tus-Resumable': '1.0.0',
+    'Upload-Metadata': tusMeta,
+    'Upload-Length': String(opts.uploadLength),
+    // Attribute the upload to the creator — shows up in the CF Stream dash.
+    'Upload-Creator': opts.creatorAddress,
+  };
+
+  const { CLOUDFLARE_ACCOUNT_ID } = getServerEnv();
+  const url = `${API_BASE}/accounts/${CLOUDFLARE_ACCOUNT_ID}/stream?direct_user=true`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+  });
+
+  if (res.status !== 201) {
+    const body = await res.text().catch(() => '');
+    throw new Error(
+      `Cloudflare Stream direct upload init failed (${res.status}): ${body.slice(0, 300)}`,
+    );
+  }
+
+  const uploadUrl = res.headers.get('Location');
+  const videoUid = res.headers.get('stream-media-id');
+  if (!uploadUrl || !videoUid) {
+    throw new Error(
+      'Cloudflare Stream direct upload response missing Location or stream-media-id headers',
+    );
+  }
+  return { uploadUrl, videoUid };
 }

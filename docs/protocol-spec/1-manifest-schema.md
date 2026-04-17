@@ -533,3 +533,32 @@ attacks.
 - [CID specification](https://github.com/multiformats/cid) — Self-describing content-addressed identifiers.
 - [ISO 8601:2019](https://www.iso.org/standard/70907.html) — Date and time representations.
 - [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf) — Secure Hash Standard (SHA-256).
+
+## 12. Implementation reference
+
+Normative references to the Sprint 2 on-chain anchor. This section is
+informative for spec readers and authoritative for client implementers.
+
+- **Deployed `ContentRegistry` (Base Sepolia, chain `84532`):**
+  `0x07ffbcB245bcD8aA08F8dA75B2AeDE750d5592F0`. Deployed block `40345592`,
+  tx `0xdfd8c57b69ea02311fa594144a37f16a419b1858e6eef2fb8e9da150ae458562`.
+  Full deployment metadata: `packages/contracts/deployments/base-sepolia.json`.
+  Deployment rationale: `docs/adr/0002-content-registry-deployment.md`.
+- **Canonical client helpers:** `packages/auth/src/register-content.ts`.
+  Exports `buildRegisterContentTypedData`, `CONTENT_REGISTRY_ABI`,
+  `CONTENT_REGISTRY_ADDRESS`, and the Sprint 2 placeholder CID derivation
+  `sprint2PlaceholderManifestCid`.
+- **Contract source:** `packages/contracts/src/ContentRegistry.sol`.
+  Generated ABI: `packages/contracts/abi/ContentRegistry.json`.
+
+Note on `manifestCid` during Sprint 2: the on-chain registration accepts
+any 32-byte identifier, and the reference client currently submits a
+deterministic placeholder computed as
+`keccak256(bytes32(videoUid) || address(owner) || uint64(createdAtSeconds))`.
+This is explicitly NOT a CIDv1 and MUST be replaced by the full CIDv1 raw
++ binary Merkle SHA-256 root defined in
+`docs/protocol-spec/2-content-addressing.md` once the Cloudflare Stream
+webhook pipeline lands and produces the assembled MP4 CID server-side
+(planned Sprint 3). Verifiers that encounter a manifest CID whose first
+byte does not match a CIDv1 multibase/multicodec prefix MUST treat the
+entry as a placeholder, not as a canonical content address.

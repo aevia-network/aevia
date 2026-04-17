@@ -3,20 +3,25 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useUploads } from '@/components/upload-context';
 import { type RecorderSession, startRecorder } from '@/lib/webrtc/recorder';
 import { type WhipSession, publishWhip } from '@/lib/webrtc/whip';
-import { CircleStop, Copy, Radio, Rewind, UploadCloud, VideoOff } from 'lucide-react';
+import { CircleStop, Copy, Radio, VideoOff } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type ConnectionStatus = 'idle' | 'requesting-devices' | 'ready' | 'connecting' | 'live' | 'error';
-type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 
 interface CreatedLive {
   uid: string;
   whipUrl: string;
   whepUrl: string;
   creator: string;
+}
+
+interface DirectUploadResponse {
+  uploadUrl: string;
+  videoUid: string;
 }
 
 export function Producer({
@@ -40,9 +45,7 @@ export function Producer({
   const [created, setCreated] = useState<CreatedLive | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadedVideoUid, setUploadedVideoUid] = useState<string | null>(null);
+  const { startUpload } = useUploads();
 
   const startPreview = useCallback(async () => {
     setStatus('requesting-devices');
@@ -65,9 +68,6 @@ export function Producer({
     if (!streamRef.current) return;
     setStatus('connecting');
     setErrorMsg(null);
-    setUploadStatus('idle');
-    setUploadError(null);
-    setUploadedVideoUid(null);
 
     try {
       const res = await fetch('/api/lives', { method: 'POST' });
@@ -106,29 +106,6 @@ export function Producer({
     }
   }, []);
 
-  const uploadRecording = useCallback(async (liveUid: string, blob: Blob) => {
-    setUploadStatus('uploading');
-    setUploadError(null);
-    try {
-      const form = new FormData();
-      form.append('file', blob, `aevia-${liveUid}.webm`);
-      const res = await fetch(`/api/lives/${liveUid}/recording`, {
-        method: 'POST',
-        body: form,
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `falha no upload (${res.status})`);
-      }
-      const data = (await res.json()) as { videoUid: string };
-      setUploadedVideoUid(data.videoUid);
-      setUploadStatus('success');
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'falha no upload');
-      setUploadStatus('error');
-    }
-  }, []);
-
   const stopLive = useCallback(async () => {
     const liveUid = created?.uid;
     const recorder = recorderRef.current;
@@ -144,18 +121,30 @@ export function Producer({
     if (videoRef.current) videoRef.current.srcObject = null;
     setStatus('idle');
 
+    // Recording → Direct Upload handoff. We request a signed tus URL from the
+    // edge and dispatch the blob into the global Upload Context. The Producer
+    // can unmount freely from here — the context persists across navigation.
     if (recorder && liveUid) {
       try {
         const blob = await recorder.stop();
-        if (blob.size > 0) {
-          await uploadRecording(liveUid, blob);
+        if (blob.size === 0) return;
+
+        const res = await fetch(`/api/lives/${liveUid}/direct-upload-url`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ uploadLength: blob.size }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(data.error ?? `falha ao obter url de upload (${res.status})`);
         }
+        const { uploadUrl, videoUid } = (await res.json()) as DirectUploadResponse;
+        startUpload({ liveInputId: liveUid, blob, uploadUrl, videoUid });
       } catch (err) {
-        setUploadError(err instanceof Error ? err.message : 'falha ao finalizar gravação');
-        setUploadStatus('error');
+        setErrorMsg(err instanceof Error ? err.message : 'falha ao finalizar gravação');
       }
     }
-  }, [created?.uid, uploadRecording]);
+  }, [created?.uid, startUpload]);
 
   useEffect(() => {
     return () => {
@@ -261,38 +250,6 @@ export function Producer({
               <Copy className="size-3.5" />
               {copied ? 'copiado' : 'copiar'}
             </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {uploadStatus !== 'idle' && created && (
-        <Card className="mt-4">
-          <CardContent className="flex flex-wrap items-center gap-3 py-4">
-            {uploadStatus === 'uploading' && (
-              <>
-                <UploadCloud className="size-4 animate-pulse text-primary" />
-                <p className="text-on-surface-variant text-sm lowercase">
-                  enviando gravação para o cloudflare stream…
-                </p>
-              </>
-            )}
-            {uploadStatus === 'success' && uploadedVideoUid && (
-              <>
-                <Rewind className="size-4 text-primary" />
-                <p className="text-on-surface-variant text-sm lowercase">
-                  gravação salva. replay disponível em{' '}
-                  <Link href={`/live/${created.uid}`} className="underline">
-                    /live/{created.uid.slice(0, 8)}
-                  </Link>{' '}
-                  assim que o cloudflare terminar de processar.
-                </p>
-              </>
-            )}
-            {uploadStatus === 'error' && (
-              <p className="text-danger text-sm lowercase">
-                <strong>falha no upload:</strong> {uploadError ?? 'erro desconhecido'}
-              </p>
-            )}
           </CardContent>
         </Card>
       )}

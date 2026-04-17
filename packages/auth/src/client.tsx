@@ -40,4 +40,29 @@ export function AeviaPrivyProvider({ appId, children }: AeviaPrivyProviderProps)
   );
 }
 
-export { useLogin, useLogout, usePrivy, useUser } from '@privy-io/react-auth';
+export {
+  useLogin,
+  useLogout,
+  usePrivy,
+  useSendTransaction,
+  useSignTypedData,
+  useUser,
+  useWallets,
+} from '@privy-io/react-auth';
+
+export { AEVIA_CHAIN_ID_MAINNET, AEVIA_CHAIN_ID_SEPOLIA } from './chains';
+export { addressToDid, didChainId, didToAddress, shortAddress } from './did';
+export {
+  CONTENT_REGISTRY_ABI,
+  CONTENT_REGISTRY_ADDRESS,
+  CONTENT_REGISTRY_DOMAIN_NAME,
+  CONTENT_REGISTRY_DOMAIN_VERSION,
+  REGISTER_CONTENT_TYPES,
+  buildRegisterContentTypedData,
+  contentRegistryAddress,
+  sprint2PlaceholderManifestCid,
+} from './register-content';
+export type {
+  BuildRegisterContentTypedDataArgs,
+  RegisterContentTypedData,
+} from './register-content';

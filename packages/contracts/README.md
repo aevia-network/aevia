@@ -57,6 +57,59 @@ cp .env.example .env
 - **Pre-mainnet**: Cantina contest (~$30k) or Spearbit engagement.
 - **Post-mainnet**: Immunefi bug bounty.
 
+## Deployment
+
+`ContentRegistry` is immutable. Each deployment is canonical per chain and MUST
+be recorded in the protocol-params ADR before it is referenced from any
+frontend or backend code.
+
+### Base Sepolia
+
+```bash
+cd packages/contracts
+
+# Required env (already present in packages/contracts/.env — DO NOT commit it):
+#   DEPLOYER_PRIVATE_KEY  — 0x-prefixed private key
+#   BASE_SEPOLIA_RPC_URL  — RPC endpoint
+source .env
+
+forge script script/Deploy.s.sol:DeployScript \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+  --private-key "$DEPLOYER_PRIVATE_KEY" \
+  --broadcast \
+  -vv
+```
+
+The script logs greppable lines so the deployed address and EIP-712 constants
+can be extracted into downstream configs without manual copy-paste:
+
+```
+ContentRegistry: 0x...
+Chain: 84532
+Deployer: 0x...
+DOMAIN_NAME: Aevia ContentRegistry
+DOMAIN_VERSION: 1
+<32-byte hex>   # DOMAIN_SEPARATOR
+<32-byte hex>   # REGISTER_TYPEHASH
+```
+
+### Verification (Basescan)
+
+Add the following flags once `BASESCAN_API_KEY` is provisioned:
+
+```bash
+  --verify \
+  --verifier-url "https://api-sepolia.basescan.org/api" \
+  --etherscan-api-key "$BASESCAN_API_KEY"
+```
+
+### Base mainnet
+
+Mainnet deployment is blocked until external audit sign-off. When unblocked,
+the same script is re-used with `--rpc-url "$BASE_MAINNET_RPC_URL"` and a
+cold deployer key signed by the Safe multisig.
+
 ## Reference
 
-Full spec: `docs/protocol-spec/6-content-registry.md` (Sprint 1) and ADR-0002 (pending).
+Full spec: `docs/protocol-spec/1-manifest-schema.md` (Sprint 1) and
+`docs/protocol-spec/6-content-registry.md` + ADR-0002 (pending).
