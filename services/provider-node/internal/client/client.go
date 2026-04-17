@@ -164,6 +164,68 @@ func (e ErrHashMismatch) Error() string {
 	return fmt.Sprintf("client: segment hash mismatch cid=%s idx=%d claimed=%s actual=%s", e.CID, e.Index, e.Claimed, e.Actual)
 }
 
+// ErrLeafMismatch is returned when a downloaded segment's SHA-256 does not
+// match the hash stored in the manifest's leaves. This is distinct from
+// ErrHashMismatch: that one detects server-header lying; this one detects
+// server-content lying (or manifest corruption) against the on-chain anchor.
+type ErrLeafMismatch struct {
+	CID      string
+	Index    int
+	Expected string
+	Actual   string
+}
+
+func (e ErrLeafMismatch) Error() string {
+	return fmt.Sprintf("client: segment leaf mismatch cid=%s idx=%d expected=%s actual=%s", e.CID, e.Index, e.Expected, e.Actual)
+}
+
+// VerifiedContent is what FetchAndVerifyContent returns — a verified
+// manifest plus every segment whose SHA-256 matches the corresponding leaf.
+type VerifiedContent struct {
+	Manifest *manifest.Manifest
+	Segments [][]byte
+}
+
+// FetchAndVerifyContent is the viewer-facing API: one call that walks the
+// manifest, downloads every segment, and cryptographically validates each
+// against manifest.Leaves[i]. Returns ErrLeafMismatch at the first divergence
+// so higher-level code can fall back to another provider.
+//
+// The flow:
+//  1. FetchManifest (runs Verify internally)
+//  2. For i in 0..segment_count: FetchSegment (header-hash verified) and
+//     assert its SHA-256 equals manifest.Leaves[i].
+//
+// Any tampering — transport, storage, relay bridge, or a colluding provider
+// that substitutes content — is caught. The trust root is the manifest's
+// CID; future iterations plumb that CID up to ContentRegistry on Base.
+func (c *Client) FetchAndVerifyContent(ctx context.Context, pid peer.ID, cid string) (*VerifiedContent, error) {
+	m, err := c.FetchManifest(ctx, pid, cid)
+	if err != nil {
+		return nil, err
+	}
+	segments := make([][]byte, m.SegmentCount)
+	for i := 0; i < m.SegmentCount; i++ {
+		seg, err := c.FetchSegment(ctx, pid, cid, i)
+		if err != nil {
+			return nil, err
+		}
+		expectedHash := m.Leaves[i]
+		actual := sha256.Sum256(seg)
+		actualHex := hex.EncodeToString(actual[:])
+		if actualHex != expectedHash {
+			return nil, ErrLeafMismatch{
+				CID:      cid,
+				Index:    i,
+				Expected: expectedHash,
+				Actual:   actualHex,
+			}
+		}
+		segments[i] = seg
+	}
+	return &VerifiedContent{Manifest: m, Segments: segments}, nil
+}
+
 func (c *Client) getBytes(ctx context.Context, pid peer.ID, path string) ([]byte, *http.Response, error) {
 	url := "libp2p://" + pid.String() + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
