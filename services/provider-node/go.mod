@@ -2,7 +2,11 @@ module github.com/Leeaandrob/aevia/services/provider-node
 
 go 1.26
 
-require github.com/libp2p/go-libp2p v0.48.0
+require (
+	github.com/libp2p/go-libp2p v0.48.0
+	github.com/libp2p/go-libp2p-gostream v0.6.0
+	github.com/libp2p/go-libp2p-http v0.5.0
+)
 
 require (
 	filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 // indirect
