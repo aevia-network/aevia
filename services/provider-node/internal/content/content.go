@@ -59,6 +59,7 @@ type HandlerRegistrar interface {
 // Register wires the /content/{cid}/... handlers into r.
 func Register(r HandlerRegistrar) {
 	r.HandleFunc("GET /content/{cid}/segment/{n}", serveSegment)
+	r.HandleFunc("GET /content/{cid}/index.m3u8", servePlaylist)
 }
 
 func serveSegment(w http.ResponseWriter, r *http.Request) {
