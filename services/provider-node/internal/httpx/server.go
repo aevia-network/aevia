@@ -113,6 +113,8 @@ func (s *Server) serveOn(ctx context.Context, l net.Listener) error {
 
 	select {
 	case <-ctx.Done():
+		// Graceful path — let callers drive shutdown via Shutdown(). Here we
+		// hard-close only if Shutdown wasn't called in time.
 		return srv.Close()
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
@@ -122,7 +124,27 @@ func (s *Server) serveOn(ctx context.Context, l net.Listener) error {
 	}
 }
 
-// Close stops every transport this server is serving on.
+// Shutdown stops accepting new connections on every transport and waits for
+// in-flight requests to finish, up to ctx's deadline. Returns the first
+// error encountered. After Shutdown returns, the Server is no longer usable.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	servers := s.servers
+	s.servers = nil
+	s.mu.Unlock()
+
+	var firstErr error
+	for _, srv := range servers {
+		if err := srv.Shutdown(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// Close hard-aborts every transport immediately, dropping in-flight requests.
+// Prefer Shutdown for normal termination; Close is the fallback when a
+// caller's shutdown deadline expires.
 func (s *Server) Close() error {
 	s.mu.Lock()
 	servers := s.servers

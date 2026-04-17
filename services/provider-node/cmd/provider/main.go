@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/config"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/content"
@@ -22,6 +23,8 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 )
+
+const shutdownGracePeriod = 10 * time.Second
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -93,7 +96,11 @@ func run(args []string) error {
 	}
 
 	cancel()
-	_ = srv.Close()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		log.Printf("http shutdown: %v", err)
+	}
 	if err := n.Close(context.Background()); err != nil {
 		return fmt.Errorf("close host: %w", err)
 	}
