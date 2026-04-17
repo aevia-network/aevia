@@ -60,6 +60,7 @@ type HandlerRegistrar interface {
 func Register(r HandlerRegistrar) {
 	r.HandleFunc("GET /content/{cid}/segment/{n}", serveSegment)
 	r.HandleFunc("GET /content/{cid}/index.m3u8", servePlaylist)
+	r.HandleFunc("GET /content/{cid}/manifest.json", serveManifest)
 }
 
 func serveSegment(w http.ResponseWriter, r *http.Request) {
