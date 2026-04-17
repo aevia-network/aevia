@@ -1,5 +1,5 @@
 // Package httpx serves HTTP handlers over a libp2p stream, using the same
-// net/http mux that later milestones will also bind to a plain net.Listener.
+// net/http mux that can also be bound to a plain net.Listener.
 //
 // The pivot of the Aevia Provider Node architecture is that a single
 // http.Handler must be addressable by three distinct clients:
@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -30,15 +31,15 @@ import (
 // DefaultProtocol is the libp2p stream protocol ID for Aevia HTTP traffic.
 const DefaultProtocol protocol.ID = "/aevia/http/1.0.0"
 
-// Server wraps an http.ServeMux and exposes it over a libp2p stream listener.
+// Server wraps an http.ServeMux and serves it on any number of transports
+// (libp2p stream, plain TCP, Unix socket, in-process pipe).
 type Server struct {
 	host     host.Host
 	mux      *http.ServeMux
 	protocol protocol.ID
 
-	mu       sync.Mutex
-	running  *http.Server
-	listener interface{ Close() error }
+	mu      sync.Mutex
+	servers []*http.Server
 }
 
 type ServerOption func(*Server)
@@ -48,7 +49,7 @@ func WithProtocol(p protocol.ID) ServerOption {
 }
 
 // NewServer wires the default handlers and returns a Server that can be
-// started against a libp2p stream.
+// started against a libp2p stream and/or a plain net.Listener.
 func NewServer(h host.Host, opts ...ServerOption) *Server {
 	s := &Server{
 		host:     h,
@@ -73,33 +74,44 @@ func (s *Server) HandleFunc(pattern string, h http.HandlerFunc) {
 	s.mux.HandleFunc(pattern, h)
 }
 
+// Handler returns the underlying ServeMux — useful for callers that want to
+// spin up their own http.Server outside of ServeHTTPOn/ServeLibp2p.
+func (s *Server) Handler() http.Handler { return s.mux }
+
 // Protocol returns the libp2p stream protocol this server is bound to.
 func (s *Server) Protocol() protocol.ID { return s.protocol }
 
-// ServeLibp2p blocks, serving HTTP over the libp2p stream protocol. Returns
-// when the context is cancelled or the underlying http.Server errors.
+// ServeLibp2p blocks serving the mux over a libp2p stream protocol.
 func (s *Server) ServeLibp2p(ctx context.Context) error {
 	listener, err := gostream.Listen(s.host, s.protocol)
 	if err != nil {
 		return err
 	}
+	return s.serveOn(ctx, listener)
+}
 
+// ServeHTTPOn blocks serving the mux over the given net.Listener. Caller owns
+// the listener lifetime; Close() on the Server will close the underlying
+// http.Server which in turn closes the listener.
+func (s *Server) ServeHTTPOn(ctx context.Context, l net.Listener) error {
+	return s.serveOn(ctx, l)
+}
+
+func (s *Server) serveOn(ctx context.Context, l net.Listener) error {
 	srv := &http.Server{
 		Handler:           s.mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
 	s.mu.Lock()
-	s.running = srv
-	s.listener = listener
+	s.servers = append(s.servers, srv)
 	s.mu.Unlock()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(listener) }()
+	go func() { errCh <- srv.Serve(l) }()
 
 	select {
 	case <-ctx.Done():
-		return s.Close()
+		return srv.Close()
 	case err := <-errCh:
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -108,23 +120,16 @@ func (s *Server) ServeLibp2p(ctx context.Context) error {
 	}
 }
 
-// Close stops the server and releases the underlying stream listener.
+// Close stops every transport this server is serving on.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	srv := s.running
-	listener := s.listener
-	s.running = nil
-	s.listener = nil
+	servers := s.servers
+	s.servers = nil
 	s.mu.Unlock()
 
 	var firstErr error
-	if srv != nil {
-		if err := srv.Close(); err != nil {
-			firstErr = err
-		}
-	}
-	if listener != nil {
-		if err := listener.Close(); err != nil && firstErr == nil {
+	for _, srv := range servers {
+		if err := srv.Close(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
