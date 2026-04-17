@@ -22,6 +22,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 
 	p2phttp "github.com/libp2p/go-libp2p-http"
+
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/manifest"
 )
 
 // DefaultTimeout is the default per-request timeout. Callers can override by
@@ -87,6 +89,41 @@ func (c *Client) FetchPlaylist(ctx context.Context, pid peer.ID, cid string) (st
 		return "", err
 	}
 	return string(body), nil
+}
+
+// FetchManifest retrieves /content/{cid}/manifest.json from pid, parses it,
+// and runs Manifest.Verify() to confirm internal cryptographic consistency
+// (leaves -> root -> cid all agree). It does NOT compare against any
+// external expected root — callers interested in that should chain a
+// second check via Manifest.CID against ContentRegistry.
+func (c *Client) FetchManifest(ctx context.Context, pid peer.ID, cid string) (*manifest.Manifest, error) {
+	body, _, err := c.getBytes(ctx, pid, "/content/"+cid+"/manifest.json")
+	if err != nil {
+		return nil, err
+	}
+	m, err := manifest.ParseManifest(body)
+	if err != nil {
+		return nil, fmt.Errorf("client: parse manifest: %w", err)
+	}
+	if err := m.Verify(); err != nil {
+		return nil, fmt.Errorf("client: manifest self-consistency: %w", err)
+	}
+	return m, nil
+}
+
+// FetchManifestExpectingCID is the stricter variant: on top of
+// self-consistency, asserts the manifest's CID equals expected. Use when
+// the caller has already resolved an on-chain CID for the content (via
+// ContentRegistry) and requires the manifest to match that anchor exactly.
+func (c *Client) FetchManifestExpectingCID(ctx context.Context, pid peer.ID, cid, expectedCID string) (*manifest.Manifest, error) {
+	m, err := c.FetchManifest(ctx, pid, cid)
+	if err != nil {
+		return nil, err
+	}
+	if m.CID != expectedCID {
+		return nil, fmt.Errorf("client: manifest cid %q does not match expected %q", m.CID, expectedCID)
+	}
+	return m, nil
 }
 
 // FetchSegment returns the segment bytes and verifies the server-reported
