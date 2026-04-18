@@ -50,7 +50,7 @@ export {
   useWallets,
 } from '@privy-io/react-auth';
 
-export { AEVIA_CHAIN_ID_MAINNET, AEVIA_CHAIN_ID_SEPOLIA } from './chains';
+export { AEVIA_CHAIN_ID_MAINNET, AEVIA_CHAIN_ID_SEPOLIA, appChainId } from './chains';
 export { addressToDid, didChainId, didToAddress, shortAddress } from './did';
 export {
   CONTENT_REGISTRY_ABI,

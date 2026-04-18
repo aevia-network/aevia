@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { AEVIA_CHAIN_ID_MAINNET } from './chains';
+import { appChainId } from './chains';
 import { addressToDid, shortAddress } from './did';
 import type { AeviaSession, LoginMethod } from './types';
 import {
@@ -98,7 +98,7 @@ function userToSession(user: User, expiresAt = 0): AeviaSession | null {
   return {
     userId: user.id,
     address: address as `0x${string}`,
-    did: addressToDid(address, AEVIA_CHAIN_ID_MAINNET),
+    did: addressToDid(address, appChainId()),
     displayName: pickDisplayName(user, address),
     loginMethod: detectLoginMethod(user),
     expiresAt,

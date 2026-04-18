@@ -12,7 +12,7 @@
  */
 
 export { addressToDid, didToAddress, didChainId, shortAddress } from './did';
-export { AEVIA_CHAIN_ID_MAINNET, AEVIA_CHAIN_ID_SEPOLIA } from './chains';
+export { AEVIA_CHAIN_ID_MAINNET, AEVIA_CHAIN_ID_SEPOLIA, appChainId } from './chains';
 export type { AeviaDid, AeviaSession, LoginMethod } from './types';
 export {
   CONTENT_REGISTRY_ABI,
