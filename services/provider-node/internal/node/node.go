@@ -5,18 +5,46 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
+	relayv2 "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 )
 
 // Config groups the knobs required to boot a Node.
 type Config struct {
-	PrivKey        crypto.PrivKey
-	ListenAddrs    []string
-	DisableRelay   bool
+	PrivKey     crypto.PrivKey
+	ListenAddrs []string
+
+	// DisableRelay opts out of the default Circuit Relay v2 client entirely.
+	// Mostly for tests that want a minimal host.
+	DisableRelay bool
+
+	// EnableRelayService turns this node into a Circuit Relay v2 HOP host.
+	// Relay Nodes (operated by Aevia infra) set this to true. Provider Nodes
+	// and Viewer clients MUST leave it false.
+	EnableRelayService bool
+
+	// StaticRelays are the addresses this node should reserve circuit slots
+	// on (when it detects it is behind NAT / has no public reachability).
+	// Empty disables AutoRelay.
+	StaticRelays []peer.AddrInfo
+
+	// EnableNATService advertises an AutoNAT service to peers. Relay Nodes
+	// set this so clients can learn their reachability status.
+	EnableNATService bool
+
+	// ForceReachability overrides automatic reachability detection. Used in
+	// tests (where 127.0.0.1 is never considered reachable) and by operators
+	// who know their network posture a priori. Valid values: "", "public",
+	// "private". Empty string keeps the automatic detection.
+	ForceReachability string
+
+	// DisableMetrics is reserved for future Prometheus integration.
 	DisableMetrics bool
 }
 
@@ -27,7 +55,7 @@ type Node struct {
 
 // New builds a libp2p host from cfg but does NOT start any application
 // services on top of it. That is deliberate — later milestones add the HTTP
-// mux, DHT, relay, and pinning storage as independent modules.
+// mux, DHT, and pinning storage as independent modules.
 func New(cfg Config) (*Node, error) {
 	if cfg.PrivKey == nil {
 		return nil, errors.New("node: PrivKey is required")
@@ -44,6 +72,42 @@ func New(cfg Config) (*Node, error) {
 	}
 	if cfg.DisableRelay {
 		opts = append(opts, libp2p.DisableRelay())
+	}
+
+	if cfg.EnableRelayService {
+		// Production tuning would pass relay.WithResources; for now accept
+		// the defaults + explicit infinite limits so tests are not throttled
+		// by the default 128-reservation cap under heavy integration.
+		opts = append(opts, libp2p.EnableRelayService(relayv2.WithInfiniteLimits()))
+	}
+
+	if len(cfg.StaticRelays) > 0 {
+		// Default AutoRelay waits for 4 candidates and 15s of boot delay
+		// before enabling. For deployments with a small curated relay set
+		// (typical Aevia topology: 3-5 globally-distributed Relay Nodes),
+		// we tune these down so a single reserved relay is enough.
+		autorelayOpts := []autorelay.Option{
+			autorelay.WithMinCandidates(1),
+			autorelay.WithNumRelays(1),
+			autorelay.WithBootDelay(0),
+			autorelay.WithMinInterval(time.Second),
+		}
+		opts = append(opts, libp2p.EnableAutoRelayWithStaticRelays(cfg.StaticRelays, autorelayOpts...))
+	}
+
+	if cfg.EnableNATService {
+		opts = append(opts, libp2p.EnableNATService())
+	}
+
+	switch cfg.ForceReachability {
+	case "public":
+		opts = append(opts, libp2p.ForceReachabilityPublic())
+	case "private":
+		opts = append(opts, libp2p.ForceReachabilityPrivate())
+	case "":
+		// no override
+	default:
+		return nil, fmt.Errorf("node: unknown ForceReachability value %q (want public, private, or empty)", cfg.ForceReachability)
 	}
 
 	h, err := libp2p.New(opts...)
