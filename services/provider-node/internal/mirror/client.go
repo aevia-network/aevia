@@ -430,7 +430,14 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 				continue
 			}
 			if err := WriteRTPFrame(s.stream, out.kind, out.ts, raw); err != nil {
+				// Fase 2.2d — write failure on an established stream
+				// means the peer is unreachable RIGHT NOW (connection
+				// broken, peer crashed, network partition). Treat as
+				// drop so the defer puts the peer in cooldown —
+				// otherwise a dead mirror would be re-selected on the
+				// very next WHIP session.
 				s.log.Warn("mirror stream write failed", "err", err.Error())
+				s.dropRequested.Store(true)
 				return
 			}
 			if dropped > 0 && time.Since(lastDropLog) > 5*time.Second {
@@ -442,7 +449,10 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 			}
 		case <-probeTimer.C:
 			if err := s.sendProbe(); err != nil {
+				// Same reasoning as the RTP write-fail path above:
+				// probe send failure = dead peer = cooldown.
 				s.log.Warn("probe write failed", "err", err.Error())
+				s.dropRequested.Store(true)
 				return
 			}
 			probeTimer.Reset(probeInterval())
