@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -23,6 +24,11 @@ import (
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 )
+
+// peerstoreTTL is how long we keep addresses surfaced by FindProviders.
+// 10 minutes is long enough for the caller to dial but short enough that
+// stale entries don't linger forever.
+const peerstoreTTL = 10 * time.Minute
 
 // ProtocolPrefix is the Aevia DHT namespace. All protocol IDs emitted by
 // this DHT are rooted under /aevia/kad/1.0.0.
@@ -125,6 +131,38 @@ func (d *DHT) Provide(ctx context.Context, cidStr string) error {
 		return fmt.Errorf("dht: provide %s: %w", cidStr, err)
 	}
 	return nil
+}
+
+// DefaultProviderLimit is the maximum provider records returned when the
+// caller passes 0 to FindProviders.
+const DefaultProviderLimit = 20
+
+// FindProviders queries the DHT for providers of cidStr. Returns up to
+// `limit` PeerIDs ranked by Kademlia distance (the DHT's natural order).
+// Passing limit <= 0 uses DefaultProviderLimit.
+func (d *DHT) FindProviders(ctx context.Context, cidStr string, limit int) ([]peer.ID, error) {
+	if d.ipfs == nil {
+		return nil, errors.New("dht: not initialized")
+	}
+	c, err := cid.Parse(cidStr)
+	if err != nil {
+		return nil, fmt.Errorf("dht: parse cid %q: %w", cidStr, err)
+	}
+	if limit <= 0 {
+		limit = DefaultProviderLimit
+	}
+
+	ch := d.ipfs.FindProvidersAsync(ctx, c, limit)
+	out := make([]peer.ID, 0, limit)
+	for info := range ch {
+		out = append(out, info.ID)
+		// Also absorb any addresses the query surfaced so later dials
+		// don't need to re-resolve via the DHT.
+		if len(info.Addrs) > 0 {
+			d.host.Peerstore().AddAddrs(info.ID, info.Addrs, peerstoreTTL)
+		}
+	}
+	return out, nil
 }
 
 func toKadMode(m Mode) dht.ModeOpt {
