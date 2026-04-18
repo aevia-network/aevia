@@ -6,7 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/por"
+	"github.com/Leeaandrob/aevia/services/provider-node/por"
 )
 
 // builder produces a dual-signed receipt with specific provider/viewer

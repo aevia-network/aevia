@@ -9,7 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/por"
+	"github.com/Leeaandrob/aevia/services/provider-node/por"
 )
 
 // keyPair generates an Ed25519 libp2p key and returns the keypair plus its

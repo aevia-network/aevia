@@ -8,7 +8,7 @@ import (
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/manifest"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 func newMemStore(t *testing.T) *storage.Store {

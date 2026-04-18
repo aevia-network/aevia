@@ -29,7 +29,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 const shutdownGracePeriod = 10 * time.Second

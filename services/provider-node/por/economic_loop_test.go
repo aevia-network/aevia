@@ -11,8 +11,8 @@ import (
 	p2phttp "github.com/libp2p/go-libp2p-http"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/por"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/por"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 // TestEconomicLoopEndToEnd is the flagship M6 proof — the entire

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 // DefaultSegmentChunkSize is the fixed-size split used by the pin CLI.

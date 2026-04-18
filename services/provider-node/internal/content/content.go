@@ -18,7 +18,7 @@ import (
 	"strconv"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/manifest"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 // FixtureSegmentSize is the deterministic payload length used by every

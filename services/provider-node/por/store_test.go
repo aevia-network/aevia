@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/por"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/por"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 func newStore(t *testing.T) *por.ReceiptStore {

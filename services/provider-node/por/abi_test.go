@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/por"
+	"github.com/Leeaandrob/aevia/services/provider-node/por"
 )
 
 // TestSubmitSettlementSelectorIsStable fixes the function selector at a

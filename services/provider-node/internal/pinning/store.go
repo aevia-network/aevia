@@ -13,7 +13,7 @@ import (
 	"strconv"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/manifest"
-	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
+	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
 // Key prefixes. Documented here so an operator reading a live BadgerDB
