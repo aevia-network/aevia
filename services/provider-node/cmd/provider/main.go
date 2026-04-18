@@ -197,9 +197,23 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	// Empty AEVIA_MIRROR_PEERS disables the client without disabling
 	// the server — any node can be a mirror endpoint regardless of
 	// whether it also replicates its own sessions.
-	mirrorPeers, mirrorPeersErrs := parseMirrorPeers(cfg.MirrorPeers)
+	// Fase 2.2e: "AUTO" literal normalises to empty — both mean
+	// dynamic selection (spec §8). Non-empty non-AUTO values are
+	// legacy static CSV and emit a WARN on boot to nudge operators
+	// toward the dynamic path.
+	rawMirrorPeers := cfg.MirrorPeers
+	if strings.EqualFold(strings.TrimSpace(rawMirrorPeers), "AUTO") {
+		rawMirrorPeers = ""
+	}
+	mirrorPeers, mirrorPeersErrs := parseMirrorPeers(rawMirrorPeers)
 	for _, perr := range mirrorPeersErrs {
 		logger.Warn().Err(perr).Str("event", "mirror_peer_parse_failed").Msg("skipping invalid mirror peer id")
+	}
+	if len(mirrorPeers) > 0 {
+		logger.Warn().
+			Str("event", "mirror_static_csv_deprecated").
+			Int("peer_count", len(mirrorPeers)).
+			Msg("AEVIA_MIRROR_PEERS static CSV is deprecated — unset or use AUTO for dynamic selection (spec §8)")
 	}
 	mirrorLog := logger.With().Str("component", "mirror").Logger()
 	// mirror package uses slog; we pass nil so it picks slog.Default().
@@ -263,7 +277,19 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	//     — PoolFetcher queries /healthz of libp2p-connected peers,
 	//       ranker picks top-K per session, StartMirroringWithPeers
 	//       opens streams to those peers.
-	ranker := mirror.NewRanker(mirror.DefaultWeights(), cfg.Region, cfg.GeoLat, cfg.GeoLng, cfg.GeoSet)
+	// Fase 2.2e — env-driven coefficient overrides (spec §5.2.2).
+	// Zero-valued cfg fields preserve DefaultWeights.
+	rankerWeights := mirror.DefaultWeights()
+	if cfg.MirrorRankAlpha != 0 {
+		rankerWeights.Alpha = cfg.MirrorRankAlpha
+	}
+	if cfg.MirrorRankBeta != 0 {
+		rankerWeights.Beta = cfg.MirrorRankBeta
+	}
+	if cfg.MirrorRankGamma != 0 {
+		rankerWeights.Gamma = cfg.MirrorRankGamma
+	}
+	ranker := mirror.NewRanker(rankerWeights, cfg.Region, cfg.GeoLat, cfg.GeoLng, cfg.GeoSet)
 	staticPool := make([]mirror.Candidate, 0, len(mirrorPeers))
 	for _, p := range mirrorPeers {
 		staticPool = append(staticPool, mirror.Candidate{PeerID: p.String()})
@@ -348,11 +374,16 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		var mirrorsStarted int
 		var mirrorMode string
 		if dynamicMode {
-			// Fase 2.2c — pick top-K peers per session via ranker.
-			// Default K=3 (spec §5.3). Viewer hint stays empty for now
-			// (creator-side hint is Fase 2.2d scope); ranker falls back
+			// Fase 2.2c + 2.2e — pick top-K peers per session via ranker.
+			// K configurable via --mirror-fanout-k / AEVIA_MIRROR_FANOUT_K
+			// (spec §5.3, default 3). Viewer hint stays empty for now
+			// (creator-side hint is separate scope); ranker falls back
 			// to origin region.
-			topK := rankerAdapter.SelectTopK(ctx, mirror.ViewerHint{}, 3)
+			fanoutK := cfg.MirrorFanoutK
+			if fanoutK <= 0 {
+				fanoutK = 3
+			}
+			topK := rankerAdapter.SelectTopK(ctx, mirror.ViewerHint{}, fanoutK)
 			mirrorMode = "dynamic"
 			mirrorsStarted = mirrorClient.StartMirroringWithPeers(ctx, sess, topK, videoCap, audioCap)
 			mirrorLog.Info().

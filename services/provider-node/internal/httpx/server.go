@@ -68,6 +68,8 @@ type MirrorCandidate struct {
 	RTTEMAMs       float64
 	ActiveSessions int
 	ProbeLossPct   float64
+	InCooldown     bool    // Fase 2.2e — peer is in drop-cooldown window
+	BootstrapRTTMs float64 // Fase 2.2e — /healthz RTT bootstrap (before echo)
 }
 
 // ScoredMirrorCandidate is the scored output shape.

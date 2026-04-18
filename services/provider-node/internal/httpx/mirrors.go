@@ -31,6 +31,7 @@ type mirrorsCandidateEntry struct {
 	Lat            float64 `json:"lat,omitempty"`
 	Lng            float64 `json:"lng,omitempty"`
 	RTTEMAMs       float64 `json:"rtt_ema_ms"`
+	BootstrapRTTMs float64 `json:"bootstrap_rtt_ms,omitempty"` // Fase 2.2e
 	ActiveSessions int     `json:"active_sessions"`
 	Score          float64 `json:"score"`
 	RTTTerm        float64 `json:"rtt_term"`
@@ -38,6 +39,7 @@ type mirrorsCandidateEntry struct {
 	RegionTerm     float64 `json:"region_term"`
 	RTTSource      string  `json:"rtt_source"`
 	ProbeLossPct   float64 `json:"probe_loss_pct"`
+	InCooldown     bool    `json:"in_cooldown,omitempty"` // Fase 2.2e
 }
 
 func (s *Server) handleMirrorCandidates(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +82,7 @@ func (s *Server) handleMirrorCandidates(w http.ResponseWriter, r *http.Request) 
 			Lat:            sc.Lat,
 			Lng:            sc.Lng,
 			RTTEMAMs:       sc.RTTEMAMs,
+			BootstrapRTTMs: sc.BootstrapRTTMs,
 			ActiveSessions: sc.ActiveSessions,
 			Score:          sc.Score,
 			RTTTerm:        sc.RTTTerm,
@@ -87,6 +90,7 @@ func (s *Server) handleMirrorCandidates(w http.ResponseWriter, r *http.Request) 
 			RegionTerm:     sc.RegionTerm,
 			RTTSource:      sc.RTTSource,
 			ProbeLossPct:   sc.ProbeLossPct,
+			InCooldown:     sc.InCooldown,
 		})
 	}
 

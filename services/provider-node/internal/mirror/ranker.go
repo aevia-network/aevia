@@ -21,6 +21,16 @@ type Candidate struct {
 	RTTEMA         time.Duration // HopMetrics.EchoEMA(); 0 = cold start
 	ActiveSessions int           // /healthz extension
 	ProbeLossPct   float64       // 0..100 — future telemetry hook
+	// InCooldown (Fase 2.2e observability) — peer is in the drop
+	// cooldown window. Hot-path SelectTopK filters these out; the
+	// /mirrors/candidates endpoint surfaces them with this flag so
+	// operators see WHY a peer ranks low or isn't picked.
+	InCooldown bool
+	// BootstrapRTT (Fase 2.2e) — RTT measured by PoolFetcher when it
+	// hit /healthz via libp2p HTTP. Cold-start fallback: better than
+	// Haversine (no physics model), distinct from EchoEMA because it
+	// includes HTTP handler overhead. Zero = not measured yet.
+	BootstrapRTT time.Duration
 }
 
 // ViewerHint carries the optional creator-declared audience geography.
@@ -133,14 +143,18 @@ func (r *Ranker) Rank(cs []Candidate, hint ViewerHint) []ScoredCandidate {
 }
 
 // effectiveRTTMs returns the RTT in ms plus a tag describing which
-// source produced it. Order of preference:
-//   - probed echo EMA (> 0) — authoritative
-//   - Haversine distance from viewer to candidate, converted at
-//     200 km/ms (coarse terrestrial fibre, spec §5.1)
-//   - 999 ms sentinel when we have nothing (cold start + no geo)
+// source produced it. Order of preference (Fase 2.2e):
+//   - probed echo EMA (> 0)    — authoritative, echo-back round-trip
+//   - PoolFetcher /healthz RTT — bootstrap, measured but coarser
+//     (includes HTTP handler overhead ~1-2 ms)
+//   - Haversine distance / 200 km/ms — cold start physics model
+//   - 999 ms sentinel           — we have nothing (cold + no geo)
 func effectiveRTTMs(c Candidate, viewerLat, viewerLng float64, viewerGeoKnown bool) (float64, string) {
 	if c.RTTEMA > 0 {
 		return float64(c.RTTEMA.Milliseconds()), "echo"
+	}
+	if c.BootstrapRTT > 0 {
+		return float64(c.BootstrapRTT.Milliseconds()), "healthz-bootstrap"
 	}
 	if c.LatLngKnown && viewerGeoKnown {
 		km := haversineKm(viewerLat, viewerLng, c.Lat, c.Lng)

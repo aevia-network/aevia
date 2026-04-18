@@ -202,7 +202,13 @@ func (p *PoolFetcher) probeOne(ctx context.Context, pid peer.ID) (Candidate, boo
 	if err != nil {
 		return Candidate{PeerID: pid.String()}, false
 	}
+	// Fase 2.2e — measure /healthz RTT. Used as BootstrapRTT when
+	// echo-back EchoEMA hasn't converged yet. Inclui HTTP handler
+	// overhead (~1-2 ms) so é bounded upward relativo ao network-only
+	// echo-back RTT — good as cold-start proxy, bad como truth.
+	fetchStart := time.Now()
 	resp, err := p.http.Do(req)
+	bootstrapRTT := time.Since(fetchStart)
 	if err != nil {
 		return Candidate{PeerID: pid.String()}, false
 	}
@@ -219,8 +225,9 @@ func (p *PoolFetcher) probeOne(ctx context.Context, pid peer.ID) (Candidate, boo
 		return Candidate{PeerID: pid.String()}, false
 	}
 	c := Candidate{
-		PeerID: pid.String(),
-		Region: h.Region,
+		PeerID:       pid.String(),
+		Region:       h.Region,
+		BootstrapRTT: bootstrapRTT,
 	}
 	if h.Lat != nil && h.Lng != nil {
 		c.Lat = *h.Lat

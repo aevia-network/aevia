@@ -324,7 +324,29 @@ type streamSink struct {
 	// per-peer cooldown on the parent Client.
 	peerID peer.ID
 	client *Client
+
+	// P95 drift watcher (Fase 2.2e, spec §7.3). Baseline locked after
+	// BaselineLearningWindow; drop fires when current EchoP95 exceeds
+	// DriftMultiplier × baseline sustained for DegradedSustainWindow.
+	// Catches silent degradation that neither consecutive-loss nor
+	// write-failure detect.
+	streamStart   time.Time
+	baselineP95   time.Duration // 0 until baseline window elapsed
+	degradedStart time.Time     // zero = healthy
 }
+
+// BaselineLearningWindow is how long we observe EchoP95 before
+// locking the baseline. Spec §7.3 says 60s.
+const BaselineLearningWindow = 60 * time.Second
+
+// DegradedSustainWindow is how long EchoP95 must exceed the drift
+// threshold before drop fires. Spec §7.3 says 30s — absorbs WebRTC
+// jitter while catching real regressions.
+const DegradedSustainWindow = 30 * time.Second
+
+// DriftMultiplier defines the EchoP95 threshold vs baseline for
+// "degraded". Spec §7.3 default 1.5×.
+const DriftMultiplier = 1.5
 
 type frameOut struct {
 	kind FrameType
@@ -355,6 +377,7 @@ func newStreamSink(
 		outstanding:    make(map[uint64]time.Time),
 		peerID:         peerID,
 		client:         client,
+		streamStart:    time.Now(),
 	}
 	s.video = func(pkt *rtp.Packet) error { return s.enqueue(FrameTypeVideoRTP, pkt) }
 	s.audio = func(pkt *rtp.Packet) error { return s.enqueue(FrameTypeAudioRTP, pkt) }
@@ -458,10 +481,12 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 			probeTimer.Reset(probeInterval())
 		case <-sweepTicker.C:
 			s.sweepOutstanding(5 * time.Second)
-			// Fase 2.2d — sweep may have tripped the loss threshold.
-			// We check AFTER the sweep so the drop signal surfaces
-			// within the same 1s tick rather than waiting another
-			// cycle.
+			// Fase 2.2e — P95 drift watcher piggybacks on the same
+			// 1Hz sweep tick. Cheap (just reads EchoP95 and compares).
+			s.checkP95Drift()
+			// Fase 2.2d — sweep OR drift may have tripped the drop.
+			// We check AFTER both so the signal surfaces within the
+			// same 1s tick rather than waiting another cycle.
 			if s.dropRequested.Load() {
 				return
 			}
@@ -530,6 +555,73 @@ func (s *streamSink) sendProbe() error {
 		ProbeID: id,
 		SendNS:  uint64(now.UnixNano()),
 	})
+}
+
+// checkP95Drift (Fase 2.2e, spec §7.3) detects silent degradation —
+// peer alive, probes responding, but EchoP95 has crept above
+// DriftMultiplier × baseline sustained for DegradedSustainWindow.
+//
+// Three-phase state machine:
+//  1. Learning (first BaselineLearningWindow): observe, don't trigger.
+//  2. Baseline locked: read EchoP95 at end of learning window, stash.
+//  3. Monitoring: if EchoP95 > DriftMultiplier * baseline, track
+//     degradedStart; if sustained > DegradedSustainWindow, fire drop.
+//     Any sample back below threshold resets degradedStart.
+func (s *streamSink) checkP95Drift() {
+	elapsed := time.Since(s.streamStart)
+	if elapsed < BaselineLearningWindow {
+		return // still learning
+	}
+	if s.baselineP95 == 0 {
+		// Lock baseline exactly once, at the learning-window boundary.
+		p95 := time.Duration(s.metrics.EchoP95Nanos())
+		if p95 == 0 {
+			// No echoes yet in the 60s window — can't lock baseline.
+			// Try again next tick; if still zero, probe loss will
+			// eventually drop the peer via the other path.
+			return
+		}
+		s.baselineP95 = p95
+		s.log.Info("P95 drift baseline locked",
+			"baseline_ns", p95.Nanoseconds(),
+			"multiplier", DriftMultiplier,
+			"sustain_window_s", DegradedSustainWindow.Seconds(),
+		)
+		return
+	}
+
+	currentP95 := time.Duration(s.metrics.EchoP95Nanos())
+	threshold := time.Duration(float64(s.baselineP95) * DriftMultiplier)
+	if currentP95 > threshold {
+		if s.degradedStart.IsZero() {
+			s.degradedStart = time.Now()
+			s.log.Warn("P95 drift started — watching",
+				"current_ns", currentP95.Nanoseconds(),
+				"baseline_ns", s.baselineP95.Nanoseconds(),
+				"threshold_ns", threshold.Nanoseconds(),
+			)
+			return
+		}
+		if time.Since(s.degradedStart) >= DegradedSustainWindow {
+			// Sustained degradation past the window — drop.
+			if !s.dropRequested.Load() {
+				s.dropRequested.Store(true)
+				s.log.Warn("mirror drop requested — P95 drift sustained",
+					"current_ns", currentP95.Nanoseconds(),
+					"baseline_ns", s.baselineP95.Nanoseconds(),
+					"degraded_ms", time.Since(s.degradedStart).Milliseconds(),
+				)
+			}
+		}
+	} else if !s.degradedStart.IsZero() {
+		// Recovered below threshold — clear the marker so brief
+		// blips don't accumulate toward the drop window.
+		s.log.Info("P95 drift recovered",
+			"current_ns", currentP95.Nanoseconds(),
+			"baseline_ns", s.baselineP95.Nanoseconds(),
+		)
+		s.degradedStart = time.Time{}
+	}
 }
 
 func (s *streamSink) sweepOutstanding(maxAge time.Duration) {

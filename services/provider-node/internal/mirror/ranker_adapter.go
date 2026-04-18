@@ -92,8 +92,15 @@ func (a *RankerAdapter) CandidateSnapshot() []httpx.MirrorCandidate {
 		}
 	}
 
+	// Fase 2.2e — tag cooldowned peers for /mirrors/candidates
+	// observability. Hot-path SelectTopK filters these out separately.
 	out := make([]httpx.MirrorCandidate, 0, len(byID))
-	for _, c := range byID {
+	for pidStr, c := range byID {
+		if a.client != nil {
+			if pid, err := peer.Decode(pidStr); err == nil {
+				c.InCooldown = a.client.IsInCooldown(pid)
+			}
+		}
 		out = append(out, candidateToHTTPX(c))
 	}
 	return out
@@ -131,6 +138,8 @@ func candidateToHTTPX(c Candidate) httpx.MirrorCandidate {
 		RTTEMAMs:       float64(c.RTTEMA.Milliseconds()),
 		ActiveSessions: c.ActiveSessions,
 		ProbeLossPct:   c.ProbeLossPct,
+		InCooldown:     c.InCooldown,
+		BootstrapRTTMs: float64(c.BootstrapRTT.Milliseconds()),
 	}
 }
 
@@ -145,6 +154,8 @@ func candidateFromHTTPX(c httpx.MirrorCandidate) Candidate {
 		RTTEMA:         timeDurationFromMs(c.RTTEMAMs),
 		ActiveSessions: c.ActiveSessions,
 		ProbeLossPct:   c.ProbeLossPct,
+		InCooldown:     c.InCooldown,
+		BootstrapRTT:   timeDurationFromMs(c.BootstrapRTTMs),
 	}
 }
 

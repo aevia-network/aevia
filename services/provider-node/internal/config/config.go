@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Mode is the node role.
@@ -90,6 +91,19 @@ type Config struct {
 	// This avoids ambiguity between "coordinate 0,0 (Null Island)"
 	// and "unset" which both deserialise to zero-valued floats.
 	GeoSet bool
+
+	// MirrorRankAlpha / Beta / Gamma (Fase 2.2e) override the default
+	// scoring weights for mirror selection. Zero = use mirror.DefaultWeights.
+	// Spec §5.2.2 defaults: α=1.0 (1ms RTT = 1 score), β=10.0 (per-session
+	// load), γ=50.0 (region_penalty scale). Tuning knobs for experiments
+	// without rebuilding.
+	MirrorRankAlpha float64
+	MirrorRankBeta  float64
+	MirrorRankGamma float64
+	// MirrorFanoutK is the per-session top-K mirror pick count. Zero
+	// defaults to 3. Capped at 10 server-side by /mirrors/candidates to
+	// bound response size, but selection itself honours higher values.
+	MirrorFanoutK int
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -124,7 +138,11 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.HTTPAddr, "http-addr", cfg.HTTPAddr, "plain HTTP listen address for Provider Público path")
 	fs.StringVar(&cfg.BootstrapPeers, "bootstrap", cfg.BootstrapPeers, "comma-separated /p2p-terminated multiaddrs to bootstrap the DHT from")
 	fs.StringVar(&cfg.RelayPeers, "relay-peers", cfg.RelayPeers, "comma-separated /p2p-terminated multiaddrs of Circuit Relay v2 nodes to reserve slots on (for NAT Provider Nodes)")
-	fs.StringVar(&cfg.MirrorPeers, "mirror-peers", cfg.MirrorPeers, "comma-separated libp2p peer IDs to mirror every WHIP session's RTP stream to (empty disables)")
+	fs.StringVar(&cfg.MirrorPeers, "mirror-peers", cfg.MirrorPeers, "comma-separated libp2p peer IDs to mirror every WHIP session's RTP stream to (empty OR \"AUTO\" enables dynamic selection)")
+	fs.Float64Var(&cfg.MirrorRankAlpha, "mirror-rank-alpha", cfg.MirrorRankAlpha, "mirror rank weight — RTT multiplier (default 1.0)")
+	fs.Float64Var(&cfg.MirrorRankBeta, "mirror-rank-beta", cfg.MirrorRankBeta, "mirror rank weight — load multiplier (default 10.0)")
+	fs.Float64Var(&cfg.MirrorRankGamma, "mirror-rank-gamma", cfg.MirrorRankGamma, "mirror rank weight — region_penalty multiplier (default 50.0)")
+	fs.IntVar(&cfg.MirrorFanoutK, "mirror-fanout-k", cfg.MirrorFanoutK, "mirror fanout top-K pick count per session (default 3)")
 	fs.StringVar(&cfg.ForceReachability, "force-reachability", cfg.ForceReachability, "override AutoNAT reachability: \"public\", \"private\", or empty")
 	fs.StringVar(&cfg.AllowedDIDs, "allowed-dids", cfg.AllowedDIDs, "comma-separated WHIP creator DID allowlist (empty disables auth)")
 	fs.StringVar(&cfg.PublicIPs, "public-ips", cfg.PublicIPs, "comma-separated public IPs this node is reachable at (needed for NAT 1:1 ICE)")
@@ -202,6 +220,26 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("AEVIA_MIRROR_PEERS"); v != "" {
 		cfg.MirrorPeers = v
 	}
+	if v := os.Getenv("AEVIA_MIRROR_RANK_ALPHA"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.MirrorRankAlpha = f
+		}
+	}
+	if v := os.Getenv("AEVIA_MIRROR_RANK_BETA"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.MirrorRankBeta = f
+		}
+	}
+	if v := os.Getenv("AEVIA_MIRROR_RANK_GAMMA"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.MirrorRankGamma = f
+		}
+	}
+	if v := os.Getenv("AEVIA_MIRROR_FANOUT_K"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MirrorFanoutK = n
+		}
+	}
 	if v := os.Getenv("AEVIA_FORCE_REACHABILITY"); v != "" {
 		cfg.ForceReachability = v
 	}
@@ -248,14 +286,12 @@ func applyEnv(cfg *Config) {
 	}
 }
 
-// strconvParseFloat — tiny local wrapper so the env parsing block
-// doesn't pull strconv into the top-level imports; keeps the surface
-// minimal while avoiding a strconv.ParseFloat call in the
-// envAssignment above.
+// strconvParseFloat predates the top-level strconv import (Fase 2.2e);
+// kept as a thin wrapper because fmt.Sscanf matches the "%g" style
+// the geo env parser uses. New parsers should call strconv.ParseFloat
+// directly.
 func strconvParseFloat(s string) (float64, error) {
-	var f float64
-	_, err := fmt.Sscanf(s, "%g", &f)
-	return f, err
+	return strconv.ParseFloat(s, 64)
 }
 
 type discardWriter struct{}
