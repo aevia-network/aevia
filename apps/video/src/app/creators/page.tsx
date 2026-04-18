@@ -193,8 +193,8 @@ function KpiBox({
         ? 'text-secondary'
         : 'text-on-surface';
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-surface-container p-4">
-      <dt className="font-label text-[10px] text-on-surface/50 uppercase tracking-wider">
+    <div className="flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-md bg-surface-container p-4">
+      <dt className="truncate font-label text-[10px] text-on-surface/50 uppercase tracking-wider">
         {label}
       </dt>
       <dd

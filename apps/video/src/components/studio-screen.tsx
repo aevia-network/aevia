@@ -94,7 +94,7 @@ function IdentityHero({ viewer }: { viewer: StudioViewer }) {
       </p>
       <h2
         id="identity"
-        className="font-headline font-semibold text-[32px] text-on-surface leading-[1.05] lowercase"
+        className="font-headline font-semibold text-[28px] text-on-surface leading-[1.1] lowercase break-words sm:text-[32px]"
       >
         olá, {viewer.displayName}
       </h2>
@@ -204,8 +204,8 @@ function Kpi({
         ? 'text-secondary'
         : 'text-on-surface';
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-surface-container p-4">
-      <dt className="font-label text-[10px] text-on-surface/50 uppercase tracking-wider">
+    <div className="flex min-w-0 flex-col gap-1.5 overflow-hidden rounded-md bg-surface-container p-4">
+      <dt className="truncate font-label text-[10px] text-on-surface/50 uppercase tracking-wider">
         {label}
       </dt>
       <dd
