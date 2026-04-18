@@ -1,9 +1,11 @@
 // Aevia Provider Node — serves pinned HLS content over both plain HTTP and
-// libp2p streams (via go-libp2p-http), and announces the CIDs it pins via
-// Kademlia DHT so any viewer can discover it by CID alone.
+// libp2p streams (via go-libp2p-http), announces the CIDs it pins via
+// Kademlia DHT, and can optionally reserve slots on Circuit Relay v2 Relay
+// Nodes so providers behind NAT stay reachable via /p2p-circuit addrs.
 //
-// Milestone 3 adds the DHT layer. Milestone 4 adds Circuit Relay v2 for
-// NAT traversal. BadgerDB-backed persistent pinning lands in Milestone 5.
+// The same binary runs as --mode=provider (serves content) or
+// --mode=relay (Circuit Relay v2 HOP + AutoNAT service, does NOT serve
+// content and does NOT earn pinning rewards).
 package main
 
 import (
@@ -41,31 +43,27 @@ func run(args []string, logger zerolog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if cfg.Mode == config.ModeRelay {
-		return errors.New("relay mode is not implemented yet (Milestone 4 adds Circuit Relay v2, DHT bootstrap, tracker)")
-	}
 
 	priv, err := identity.LoadOrCreate(cfg.DataDir)
 	if err != nil {
 		return err
 	}
 
-	n, err := node.New(node.Config{
-		PrivKey:     priv,
-		ListenAddrs: []string{cfg.Listen},
-	})
+	nc, err := buildNodeConfig(cfg, priv)
 	if err != nil {
 		return err
 	}
 
-	srv := httpx.NewServer(n.Host())
-	content.Register(srv)
+	n, err := node.New(nc)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Boot the DHT. For a Provider Node we run in server mode so the node
-	// contributes to routing + answers queries on behalf of others.
+	// DHT runs in both modes. Relay Nodes contribute routing without serving
+	// content; Provider Nodes contribute routing AND serve content.
 	d, err := aeviadht.New(ctx, n.Host(), aeviadht.ModeServer)
 	if err != nil {
 		return err
@@ -76,7 +74,6 @@ func run(args []string, logger zerolog.Logger) error {
 		return err
 	}
 	if err := d.Bootstrap(ctx, seeds); err != nil {
-		// Log but do not abort — a fresh node with no seeds is a valid seed itself.
 		logger.Warn().Err(err).Str("event", "dht_bootstrap_warn").Msg("dht bootstrap incomplete")
 	}
 
@@ -86,9 +83,10 @@ func run(args []string, logger zerolog.Logger) error {
 		Str("peer_id", n.PeerID().String()).
 		Str("data_dir", cfg.DataDir).
 		Str("listen", cfg.Listen).
-		Str("http_addr", cfg.HTTPAddr).
 		Int("bootstrap_seeds", len(seeds)).
-		Msg("provider-node started")
+		Int("static_relays", len(nc.StaticRelays)).
+		Bool("relay_service", nc.EnableRelayService).
+		Msg(boot_message(cfg.Mode))
 
 	for _, addr := range n.Host().Addrs() {
 		logger.Info().
@@ -96,6 +94,19 @@ func run(args []string, logger zerolog.Logger) error {
 			Str("addr", addr.String()+"/p2p/"+n.PeerID().String()).
 			Msg("listening on libp2p transport")
 	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	if cfg.Mode == config.ModeRelay {
+		return runRelayLoop(ctx, logger, stop, d, n)
+	}
+	return runProviderLoop(ctx, cancel, logger, stop, cfg, d, n)
+}
+
+func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zerolog.Logger, stop <-chan os.Signal, cfg config.Config, d *aeviadht.DHT, n *node.Node) error {
+	srv := httpx.NewServer(n.Host())
+	content.Register(srv)
 
 	tcpListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
@@ -106,9 +117,6 @@ func run(args []string, logger zerolog.Logger) error {
 	libp2pErr := make(chan error, 1)
 	go func() { tcpErr <- srv.ServeHTTPOn(ctx, tcpListener) }()
 	go func() { libp2pErr <- srv.ServeLibp2p(ctx) }()
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-stop:
@@ -137,4 +145,30 @@ func run(args []string, logger zerolog.Logger) error {
 	}
 	logger.Info().Str("event", "shutdown_complete").Msg("shutdown complete")
 	return nil
+}
+
+func runRelayLoop(ctx context.Context, logger zerolog.Logger, stop <-chan os.Signal, d *aeviadht.DHT, n *node.Node) error {
+	logger.Info().Str("event", "relay_mode_active").Msg("relay mode active — no content handlers registered")
+
+	select {
+	case <-stop:
+		logger.Info().Str("event", "shutdown_signal").Msg("shutdown signal received")
+	case <-ctx.Done():
+	}
+
+	if err := d.Close(); err != nil {
+		logger.Error().Err(err).Str("event", "dht_close_error").Msg("dht close")
+	}
+	if err := n.Close(context.Background()); err != nil {
+		return err
+	}
+	logger.Info().Str("event", "shutdown_complete").Msg("shutdown complete")
+	return nil
+}
+
+func boot_message(mode config.Mode) string {
+	if mode == config.ModeRelay {
+		return "relay-node started"
+	}
+	return "provider-node started"
 }
