@@ -1,14 +1,17 @@
 'use client';
 
 import { BottomNav } from '@/components/bottom-nav';
+import { type ProviderHealth, shortPeerId } from '@/lib/mesh/health';
 import { MeshDot } from '@aevia/ui';
 import {
   ArrowLeft,
   ArrowRight,
   ChevronRight,
   FileText,
+  Globe2,
   Heart,
   Info,
+  MapPin,
   Scale,
   Shield,
 } from 'lucide-react';
@@ -38,9 +41,16 @@ export interface TrustViewer {
 
 export interface TrustScreenProps {
   viewer: TrustViewer | null;
+  /**
+   * Live snapshot of every registered provider in the mesh — fetched
+   * server-side from each `/healthz`. Empty array means no provider is
+   * currently registered in the viewer's peer registry env (honest: grafo
+   * ausente, não placeholder).
+   */
+  mesh: ProviderHealth[];
 }
 
-export function TrustScreen({ viewer }: TrustScreenProps) {
+export function TrustScreen({ viewer, mesh }: TrustScreenProps) {
   return (
     <div className="min-h-screen pb-28">
       <TopChrome />
@@ -50,6 +60,7 @@ export function TrustScreen({ viewer }: TrustScreenProps) {
         <FormulaInset />
         <DimensionRows />
         <OutcomeStates />
+        <MeshGrafo mesh={mesh} />
         <TransparencyNumbers />
         <CouncilBlock />
         <ViewerHistoryBlock viewer={viewer} />
@@ -255,6 +266,129 @@ function OutcomeStates() {
       </ul>
     </section>
   );
+}
+
+// ---- Mesh grafo (real, observável em tempo real) ------------------------
+
+interface MeshGrafoProps {
+  mesh: ProviderHealth[];
+}
+
+/**
+ * Renders every provider currently registered in the mesh with its
+ * region, coordinates, RTT, and reachability status. This section is NOT
+ * a mock: the data comes from each provider's live `/healthz` fetched
+ * server-side at render time. An empty state explains honestly when
+ * the viewer's peer registry env lists no providers.
+ */
+function MeshGrafo({ mesh }: MeshGrafoProps) {
+  const reachable = mesh.filter((m) => m.status === 'ok').length;
+  const total = mesh.length;
+
+  return (
+    <section aria-labelledby="grafo" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h3 id="grafo" className="font-headline font-semibold text-on-surface text-xl lowercase">
+          mesh ao vivo
+        </h3>
+        <span className="font-label text-[10px] text-on-surface/50 uppercase tracking-[0.15em]">
+          observável em tempo real
+        </span>
+      </div>
+      <p className="font-body text-on-surface/70 text-sm">
+        cada linha é um provider público conhecido. a região e as coordenadas vêm do próprio node —
+        assinadas por quem opera, não pela aevia.
+      </p>
+
+      {total === 0 ? (
+        <div className="flex flex-col gap-2 rounded-md border border-on-surface/10 border-dashed bg-surface-container/60 p-4">
+          <p className="font-body text-on-surface/70 text-sm">
+            nenhum provider público registrado neste cliente.
+          </p>
+          <p className="font-label text-[11px] text-on-surface/50 lowercase">
+            o grafo só aparece quando operadores publicam seus endpoints no registry — permanência
+            não implica descoberta.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 font-label text-[11px] text-on-surface/60 lowercase">
+            <Globe2 className="size-3.5" aria-hidden />
+            <span>
+              {reachable}/{total} nodes alcançáveis agora
+            </span>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {mesh.map((p) => (
+              <li
+                key={p.httpsBase}
+                className="flex flex-col gap-1 rounded-md bg-surface-container p-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-label font-medium text-on-surface text-sm lowercase">
+                    {p.peerId ? shortPeerId(p.peerId) : hostOf(p.httpsBase)}
+                  </span>
+                  <ReachabilityBadge status={p.status} />
+                </div>
+                <MeshRowMeta provider={p} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ReachabilityBadge({ status }: { status: ProviderHealth['status'] }) {
+  if (status === 'ok') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 font-label text-[10px] text-primary uppercase tracking-[0.1em]">
+        <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+        alcançável
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-error/10 px-2.5 py-0.5 font-label text-[10px] text-error uppercase tracking-[0.1em]">
+      <span className="size-1.5 rounded-full bg-error" aria-hidden />
+      offline
+    </span>
+  );
+}
+
+function MeshRowMeta({ provider }: { provider: ProviderHealth }) {
+  if (provider.status === 'unreachable') {
+    return (
+      <p className="font-label text-[11px] text-on-surface/50 lowercase">
+        {provider.httpsBase} · motivo {provider.reason}
+      </p>
+    );
+  }
+  const regionLabel = provider.region ?? 'sem região declarada';
+  const hasCoords = provider.lat !== undefined && provider.lng !== undefined;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-label text-[11px] text-on-surface/60 lowercase">
+      <span className="inline-flex items-center gap-1">
+        <MapPin className="size-3" aria-hidden />
+        {regionLabel}
+      </span>
+      {hasCoords ? (
+        <span>
+          {(provider.lat as number).toFixed(2)}°, {(provider.lng as number).toFixed(2)}°
+        </span>
+      ) : null}
+      <span>rtt {provider.rttMs} ms</span>
+    </div>
+  );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 // ---- Transparency numbers (honest mock) ---------------------------------
