@@ -155,7 +155,14 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		go d.RefreshLoop(ctx, pinned, aeviadht.DefaultRefreshPeriod)
 	}
 
-	srv := httpx.NewServer(n.Host())
+	httpxOpts := []httpx.ServerOption{}
+	if cfg.Region != "" {
+		httpxOpts = append(httpxOpts, httpx.WithRegion(cfg.Region))
+	}
+	if cfg.GeoSet {
+		httpxOpts = append(httpxOpts, httpx.WithGeo(cfg.GeoLat, cfg.GeoLng))
+	}
+	srv := httpx.NewServer(n.Host(), httpxOpts...)
 	content.NewHandlers().WithSource(cs).Register(srv)
 
 	// WHIP ingest + HLS live routing. Creators POST SDP to /whip; the

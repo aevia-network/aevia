@@ -68,6 +68,21 @@ type Config struct {
 	// TLSStaging targets LE's staging endpoint — certs browsers reject —
 	// to dodge the production rate-limit during first-boot smoke tests.
 	TLSStaging bool
+	// Region is an opaque hierarchical string (e.g. "BR-SP", "EU-DE",
+	// "NA-US-CA") that /healthz publishes. Viewers in apps/video use
+	// it to rank providers by geographic proximity via prefix match
+	// (BR-* matches any BR-*). Empty leaves the field unset.
+	Region string
+	// GeoLat / GeoLng are the node's approximate coordinates in
+	// decimal degrees (±90 / ±180). Present together or omitted
+	// together. When set, viewers with their own geo rank providers
+	// by great-circle distance, falling back to region prefix match.
+	GeoLat float64
+	GeoLng float64
+	// GeoSet is true when GeoLat/GeoLng were explicitly configured.
+	// This avoids ambiguity between "coordinate 0,0 (Null Island)"
+	// and "unset" which both deserialise to zero-valued floats.
+	GeoSet bool
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -112,8 +127,30 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.TLSAddr, "tls-addr", cfg.TLSAddr, "HTTPS listen address (default :443 when --tls-domain is set)")
 	fs.StringVar(&cfg.TLSCacheDir, "tls-cache-dir", cfg.TLSCacheDir, "directory where issued TLS certs are cached (default ~/.aevia/provider-node/tls)")
 	fs.BoolVar(&cfg.TLSStaging, "tls-staging", cfg.TLSStaging, "use LE staging CA instead of production (for first-boot tests)")
+	fs.StringVar(&cfg.Region, "region", cfg.Region, "geo region hint published on /healthz (e.g. BR-SP, EU-DE)")
+	latFlag := fs.Float64("geo-lat", 0, "latitude in decimal degrees (set together with --geo-lng)")
+	lngFlag := fs.Float64("geo-lng", 0, "longitude in decimal degrees (set together with --geo-lat)")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
+	}
+	// Detect whether --geo-lat / --geo-lng were actually provided
+	// (vs the default zero). Either both or neither must be set.
+	latProvided, lngProvided := false, false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "geo-lat":
+			latProvided = true
+		case "geo-lng":
+			lngProvided = true
+		}
+	})
+	if latProvided != lngProvided {
+		return cfg, fmt.Errorf("config: --geo-lat and --geo-lng must be set together")
+	}
+	if latProvided {
+		cfg.GeoLat = *latFlag
+		cfg.GeoLng = *lngFlag
+		cfg.GeoSet = true
 	}
 	if !cfg.Mode.Valid() {
 		return cfg, fmt.Errorf("config: --mode must be %q or %q, got %q", ModeProvider, ModeRelay, cfg.Mode)
@@ -184,6 +221,30 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("AEVIA_TLS_STAGING"); v == "1" || v == "true" {
 		cfg.TLSStaging = true
 	}
+	if v := os.Getenv("AEVIA_REGION"); v != "" {
+		cfg.Region = v
+	}
+	lat := os.Getenv("AEVIA_GEO_LAT")
+	lng := os.Getenv("AEVIA_GEO_LNG")
+	if lat != "" && lng != "" {
+		if lv, err := strconvParseFloat(lat); err == nil {
+			if gv, err2 := strconvParseFloat(lng); err2 == nil {
+				cfg.GeoLat = lv
+				cfg.GeoLng = gv
+				cfg.GeoSet = true
+			}
+		}
+	}
+}
+
+// strconvParseFloat — tiny local wrapper so the env parsing block
+// doesn't pull strconv into the top-level imports; keeps the surface
+// minimal while avoiding a strconv.ParseFloat call in the
+// envAssignment above.
+func strconvParseFloat(s string) (float64, error) {
+	var f float64
+	_, err := fmt.Sscanf(s, "%g", &f)
+	return f, err
 }
 
 type discardWriter struct{}

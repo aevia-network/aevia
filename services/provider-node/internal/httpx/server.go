@@ -37,6 +37,9 @@ type Server struct {
 	host     host.Host
 	mux      *http.ServeMux
 	protocol protocol.ID
+	region   string
+	lat      *float64
+	lng      *float64
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -46,6 +49,23 @@ type ServerOption func(*Server)
 
 func WithProtocol(p protocol.ID) ServerOption {
 	return func(s *Server) { s.protocol = p }
+}
+
+// WithRegion tags the node with a region string (e.g. "BR-SP",
+// "EU-DE") that viewers consume via /healthz to pick a geographically
+// closer provider. Empty string omits the field from the response.
+func WithRegion(region string) ServerOption {
+	return func(s *Server) { s.region = region }
+}
+
+// WithGeo attaches latitude/longitude in decimal degrees so viewers
+// with their own coordinates can rank providers by great-circle
+// distance. Call only when both values are known and sensible.
+func WithGeo(lat, lng float64) ServerOption {
+	return func(s *Server) {
+		s.lat = &lat
+		s.lng = &lng
+	}
 }
 
 // NewServer wires the default handlers and returns a Server that can be
@@ -161,17 +181,24 @@ func (s *Server) Close() error {
 }
 
 type healthResponse struct {
-	Status string `json:"status"`
-	PeerID string `json:"peer_id"`
+	Status string   `json:"status"`
+	PeerID string   `json:"peer_id"`
+	Region string   `json:"region,omitempty"`
+	Lat    *float64 `json:"lat,omitempty"`
+	Lng    *float64 `json:"lng,omitempty"`
 }
 
 func (s *Server) registerDefaults() {
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(healthResponse{
+		resp := healthResponse{
 			Status: "ok",
 			PeerID: s.host.ID().String(),
-		})
+			Region: s.region,
+			Lat:    s.lat,
+			Lng:    s.lng,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 }
 
