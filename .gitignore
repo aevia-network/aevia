@@ -78,3 +78,8 @@ deploy/e2e/logs/
 # Internal planning — lives in aevia-network/planning (private repo)
 TODO.md
 LANDING_NETWORK.md
+
+# Operational deploy — infra topology lives in aevia-network/planning (private repo)
+deploy/README.md
+deploy/e2e/run-m8.sh
+deploy/mac/run.sh
