@@ -604,8 +604,9 @@ export const en: Dictionary = {
       },
       { slug: 'rfc-4', title: 'acceptable use policy', status: 'published', updated: '2026-04-16' },
       { slug: 'rfc-5', title: 'persistence pool', status: 'published', updated: '2026-04-16' },
-      { slug: 'rfc-6', title: 'risk score', status: 'planned', updated: 'sprint 3' },
-      { slug: 'rfc-7', title: 'moderation', status: 'planned', updated: 'sprint 4' },
+      { slug: 'rfc-6', title: 'risk score', status: 'published', updated: '2026-04-18' },
+      { slug: 'rfc-7', title: 'moderation & council', status: 'published', updated: '2026-04-18' },
+      { slug: 'rfc-8', title: 'economic architecture', status: 'published', updated: '2026-04-18' },
     ],
     documentsLabel: 'documents',
     cards: [
@@ -653,6 +654,30 @@ export const en: Dictionary = {
         abstract:
           'how cusdc flows to nodes that prove replication, payment formula, and monitoring.',
         sectionsLabel: '14 sections',
+      },
+      {
+        n: 6,
+        slug: 'rfc-6',
+        title: 'risk score',
+        abstract:
+          'public function R(c) that gates subsidy and feed eligibility. formula, inputs, thresholds, jury appeal path.',
+        sectionsLabel: '13 sections',
+      },
+      {
+        n: 7,
+        slug: 'rfc-7',
+        title: 'moderation & ecumenical council',
+        abstract:
+          '12-seat council with 4-year terms, per-term veto, trust ledger. contestable governance of the editorial layer.',
+        sectionsLabel: '13 sections',
+      },
+      {
+        n: 8,
+        slug: 'rfc-8',
+        title: 'economic architecture',
+        abstract:
+          '4 treasuries, boost router, credit pulse, operator fees, llc/pool separation invariants. where every cusdc lives.',
+        sectionsLabel: '10 sections',
       },
     ],
     readDocument: 'read document',

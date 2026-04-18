@@ -11,7 +11,17 @@ import { notFound } from 'next/navigation';
 export const runtime = 'edge';
 export const dynamic = 'force-static';
 
-const SLUGS = ['rfc-0', 'rfc-1', 'rfc-2', 'rfc-3', 'rfc-4', 'rfc-5'] as const;
+const SLUGS = [
+  'rfc-0',
+  'rfc-1',
+  'rfc-2',
+  'rfc-3',
+  'rfc-4',
+  'rfc-5',
+  'rfc-6',
+  'rfc-7',
+  'rfc-8',
+] as const;
 
 const EYEBROWS: Record<RFCSlug, string> = {
   'rfc-0': 'rfc-0 · overview',
@@ -20,6 +30,9 @@ const EYEBROWS: Record<RFCSlug, string> = {
   'rfc-3': 'rfc-3 · auth',
   'rfc-4': 'rfc-4 · aup',
   'rfc-5': 'rfc-5 · persistence',
+  'rfc-6': 'rfc-6 · risk score',
+  'rfc-7': 'rfc-7 · moderation',
+  'rfc-8': 'rfc-8 · economic architecture',
 };
 
 const UPDATED: Record<RFCSlug, string> = {
@@ -29,6 +42,9 @@ const UPDATED: Record<RFCSlug, string> = {
   'rfc-3': '2026-04-16',
   'rfc-4': '2026-04-16',
   'rfc-5': '2026-04-16',
+  'rfc-6': '2026-04-18',
+  'rfc-7': '2026-04-18',
+  'rfc-8': '2026-04-18',
 };
 
 export async function generateMetadata({

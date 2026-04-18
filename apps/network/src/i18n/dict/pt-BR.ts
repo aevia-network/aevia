@@ -606,8 +606,9 @@ export const ptBR = {
       },
       { slug: 'rfc-4', title: 'acceptable use policy', status: 'published', updated: '2026-04-16' },
       { slug: 'rfc-5', title: 'persistence pool', status: 'published', updated: '2026-04-16' },
-      { slug: 'rfc-6', title: 'risk score', status: 'planned', updated: 'sprint 3' },
-      { slug: 'rfc-7', title: 'moderação', status: 'planned', updated: 'sprint 4' },
+      { slug: 'rfc-6', title: 'risk score', status: 'published', updated: '2026-04-18' },
+      { slug: 'rfc-7', title: 'moderação e conselho', status: 'published', updated: '2026-04-18' },
+      { slug: 'rfc-8', title: 'arquitetura econômica', status: 'published', updated: '2026-04-18' },
     ],
     documentsLabel: 'documentos',
     cards: [
@@ -656,6 +657,30 @@ export const ptBR = {
         abstract:
           'como cusdc flui para os nós que provam replicação, fórmula de pagamento e monitoramento.',
         sectionsLabel: '14 seções',
+      },
+      {
+        n: 6,
+        slug: 'rfc-6',
+        title: 'risk score',
+        abstract:
+          'função pública R(c) que determina elegibilidade de subsídio e feed. fórmula, inputs, thresholds, apelação via jury.',
+        sectionsLabel: '13 seções',
+      },
+      {
+        n: 7,
+        slug: 'rfc-7',
+        title: 'moderação e conselho ecumênico',
+        abstract:
+          'conselho de 12 assentos, mandatos de 4 anos, veto per-term, trust ledger. governança contestável da camada editorial.',
+        sectionsLabel: '13 seções',
+      },
+      {
+        n: 8,
+        slug: 'rfc-8',
+        title: 'arquitetura econômica',
+        abstract:
+          '4 tesourarias, boost router, credit pulse, fees do operador, invariantes de separação llc/pool. onde cada cusdc vive.',
+        sectionsLabel: '10 seções',
       },
     ],
     readDocument: 'ler documento',
