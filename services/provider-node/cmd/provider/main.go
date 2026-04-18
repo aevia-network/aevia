@@ -33,6 +33,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/sessioncid"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/tlsauto"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/whep"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/whip"
@@ -204,6 +205,35 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 				}
 			}()
 		})
+		// Announce this live session in the DHT so viewers querying any
+		// Aevia node via /dht/resolve can discover which provider holds
+		// the stream. Without this the viewer is forced to a hardcoded
+		// hub URL — exactly the SPOF the Kademlia layer is meant to
+		// eliminate. Done in a bounded-ctx goroutine so a slow announce
+		// never blocks the SDP answer.
+		go func() {
+			announceCid, err := sessioncid.Of(sess.ID)
+			if err != nil {
+				whipLog.Warn().Err(err).Str("event", "session_cid_failed").Str("session_id", sess.ID).Msg("derive session cid")
+				return
+			}
+			actx, acancel := context.WithTimeout(ctx, 30*time.Second)
+			defer acancel()
+			if err := d.Provide(actx, announceCid); err != nil {
+				whipLog.Warn().Err(err).
+					Str("event", "session_announce_failed").
+					Str("session_id", sess.ID).
+					Str("cid", announceCid).
+					Msg("dht provide failed — session not discoverable via /dht/resolve")
+				return
+			}
+			whipLog.Info().
+				Str("event", "session_announced").
+				Str("session_id", sess.ID).
+				Str("cid", announceCid).
+				Msg("live session announced in DHT")
+		}()
+
 		go func() {
 			<-sess.Done()
 			if err := seg.Close(); err != nil {
