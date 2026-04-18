@@ -30,11 +30,19 @@ import (
 // supplying their own http.Client via WithHTTPClient.
 const DefaultTimeout = 10 * time.Second
 
+// Resolver is anything that can answer "who provides this CID?". Implemented
+// by *dht.DHT (internal/dht package) and trivially by hand-rolled mocks in
+// tests.
+type Resolver interface {
+	FindProviders(ctx context.Context, cidStr string, limit int) ([]peer.ID, error)
+}
+
 // Client is a libp2p-http client for Aevia content.
 type Client struct {
 	host     host.Host
 	protocol protocol.ID
 	http     *http.Client
+	resolver Resolver
 }
 
 // Option configures a Client.
@@ -49,6 +57,12 @@ func WithProtocol(p protocol.ID) Option {
 // p2phttp.RoundTripper bound to the same host.
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.http = hc }
+}
+
+// WithResolver attaches a CID -> []PeerID resolver so the client can fetch
+// content by CID alone via ResolveProviders / FetchAndVerifyByCID.
+func WithResolver(r Resolver) Option {
+	return func(c *Client) { c.resolver = r }
 }
 
 // New builds a Client that dials peers using host's libp2p stack.
@@ -162,6 +176,37 @@ type ErrHashMismatch struct {
 
 func (e ErrHashMismatch) Error() string {
 	return fmt.Sprintf("client: segment hash mismatch cid=%s idx=%d claimed=%s actual=%s", e.CID, e.Index, e.Claimed, e.Actual)
+}
+
+// ResolveProviders queries the configured Resolver for PeerIDs that claim to
+// serve cid. Returns ErrNoResolver if the client was built without a
+// Resolver, ErrNoProviders if the Resolver returned an empty list.
+func (c *Client) ResolveProviders(ctx context.Context, cid string, limit int) ([]peer.ID, error) {
+	if c.resolver == nil {
+		return nil, ErrNoResolver
+	}
+	providers, err := c.resolver.FindProviders(ctx, cid, limit)
+	if err != nil {
+		return nil, fmt.Errorf("client: resolve providers for %s: %w", cid, err)
+	}
+	if len(providers) == 0 {
+		return nil, ErrNoProviders{CID: cid}
+	}
+	return providers, nil
+}
+
+// ErrNoResolver is returned when a resolver-dependent method is called on
+// a Client that was built without client.WithResolver.
+var ErrNoResolver = fmt.Errorf("client: no resolver configured (use client.WithResolver)")
+
+// ErrNoProviders is returned when the resolver returned an empty provider
+// set for the requested CID.
+type ErrNoProviders struct {
+	CID string
+}
+
+func (e ErrNoProviders) Error() string {
+	return "client: no providers found for cid=" + e.CID
 }
 
 // ErrLeafMismatch is returned when a downloaded segment's SHA-256 does not
