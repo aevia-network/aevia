@@ -64,4 +64,11 @@ export interface StreamVideo {
   };
   liveInput?: string;
   meta?: Record<string, string>;
+  /**
+   * Whether the video requires a signed JWT to play. When `true`, the public
+   * HLS/DASH manifest URLs return 401 — call `updateVideo(uid, {
+   * requireSignedURLs: false })` to flip it back. Cloudflare omits the field
+   * on older video records; treat `undefined` as the account default.
+   */
+  requireSignedURLs?: boolean;
 }

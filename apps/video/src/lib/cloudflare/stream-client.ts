@@ -160,6 +160,28 @@ export async function deleteVideo(uid: string): Promise<void> {
 }
 
 /**
+ * Patch a Cloudflare Stream video. Supports a narrow set of mutable fields —
+ * extend as needed. Today we use it to flip `requireSignedURLs` to `false`
+ * after a direct creator upload completes (Cloudflare's tus metadata path
+ * does not honour `requiresignedurls=false` and the resulting video inherits
+ * the account default, which on most accounts is `true` → 401 on the public
+ * HLS manifest).
+ *
+ * Docs: https://developers.cloudflare.com/api/operations/stream-videos-update-video-details
+ */
+export async function updateVideo(
+  uid: string,
+  patch: { requireSignedURLs?: boolean; meta?: Record<string, string> },
+): Promise<StreamVideo> {
+  const res = await fetch(streamUrl(uid), {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify(patch),
+  });
+  return handle<StreamVideo>(res);
+}
+
+/**
  * Create a Cloudflare Stream Direct Creator Upload (tus resumable).
  *
  * This is the preferred path for MediaRecorder blobs: the client uploads the
@@ -212,8 +234,11 @@ export async function createDirectUpload(opts: DirectUploadOptions): Promise<Dir
     creatorAddress: opts.creatorAddress,
     ...(opts.creatorDid ? { creatorDid: opts.creatorDid } : {}),
     source: 'whip-client-recorder',
-    requiresignedurls: 'false',
   });
+  // NB: Cloudflare's `requiresignedurls` tus key treats *presence* as truthy
+  // (the value is ignored). To unset signed-URL requirement we must PATCH
+  // the video after upload via `updateVideo()` — wired in the
+  // `link-recording` route once tus reports success.
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${getServerEnv().STREAM_API_TOKEN}`,

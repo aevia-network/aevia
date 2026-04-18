@@ -1,4 +1,9 @@
-import { getLiveInput, getVideo, updateLiveInput } from '@/lib/cloudflare/stream-client';
+import {
+  getLiveInput,
+  getVideo,
+  updateLiveInput,
+  updateVideo,
+} from '@/lib/cloudflare/stream-client';
 import { readAeviaSession } from '@aevia/auth/server';
 import { NextResponse } from 'next/server';
 
@@ -52,13 +57,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   // Confirm the video exists and belongs to this account before writing meta.
   // `getVideo` throws on 404/403 — propagate as a 400 so the client knows the
   // upload didn't actually land on Cloudflare.
+  let video: Awaited<ReturnType<typeof getVideo>>;
   try {
-    await getVideo(videoUid);
+    video = await getVideo(videoUid);
   } catch (err) {
     return NextResponse.json(
       { error: `video not found: ${err instanceof Error ? err.message : 'unknown'}` },
       { status: 400 },
     );
+  }
+
+  // Cloudflare's tus `requiresignedurls` metadata path does not honour
+  // `'false'` — newly uploaded videos inherit the account default (commonly
+  // `requireSignedURLs: true` → 401 on the public HLS manifest). Flip it
+  // here, where we have an authenticated session and ownership has been
+  // checked. Non-fatal: if Cloudflare rejects the patch the link still
+  // completes; the viewer page lazy-corrects on the next playback attempt.
+  if (video.requireSignedURLs !== false) {
+    await updateVideo(videoUid, { requireSignedURLs: false }).catch(() => {
+      // Swallow — lazy-fix path covers it.
+    });
   }
 
   try {
