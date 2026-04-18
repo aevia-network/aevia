@@ -1,0 +1,717 @@
+'use client';
+
+import { BottomNav } from '@/components/bottom-nav';
+import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
+import { PermanenceStrip, PresenceRow, ReactionStrip, VigilChip } from '@aevia/ui';
+import Hls from 'hls.js';
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  MoreHorizontal,
+  Play,
+  Rewind,
+  Send,
+  Share2,
+} from 'lucide-react';
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+/**
+ * Mirrors Stitch screen `7687d89d09ff44378cad9f532419fc84` ("Aevia — Live
+ * Player (Harmonized)"). Composes four of the new signature components:
+ * ReactionStrip, PresenceRow, PermanenceStrip, VigilChip.
+ *
+ * Playback is preserved verbatim from the prior viewer.tsx — WHEP for live,
+ * HLS fallback for VOD (via native canPlayType or hls.js), autoplay-gate
+ * overlay for iOS Safari, mode-switch from live→replay when broadcaster
+ * disconnects. Chrome (top bar, overlays, reactions, chat) is new.
+ *
+ * Sprint 2 split:
+ * - REAL: WHEP/HLS playback, state, live.created, creator address/DID,
+ *   manifest CID, register block/tx, title.
+ * - MOCK with honest framing: reaction counts, presence row viewers,
+ *   chat messages, "+N assistindo" counter. All mocks carry an "amostra ·
+ *   sprint 3" tag so nothing passes for production.
+ */
+
+type ViewerMode = 'live' | 'vod';
+type LiveStatus = 'idle' | 'connecting' | 'playing' | 'ended' | 'error';
+type VodStatus = 'idle' | 'loading' | 'playing' | 'error';
+
+export interface PlayerScreenProps {
+  uid: string;
+  title: string;
+  whepUrl: string;
+  hlsUrl: string | null;
+  vodProcessing?: boolean;
+  creatorDisplayName: string;
+  creatorAddress: `0x${string}` | null;
+  state: string;
+  /** ISO8601 timestamp when the live input was created (proxy for "started at"). */
+  startedISO: string;
+  manifestCid: string | null;
+  registerBlock: number | null;
+  registerTxHash: string | null;
+}
+
+export function PlayerScreen(props: PlayerScreenProps) {
+  const initialMode: ViewerMode = props.state === 'connected' ? 'live' : 'vod';
+  const [mode, setMode] = useState<ViewerMode>(initialMode);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const whepSessionRef = useRef<WhepSession | null>(null);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>('idle');
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  const [vodStatus, setVodStatus] = useState<VodStatus>('idle');
+  const [vodError, setVodError] = useState<string | null>(null);
+
+  const startLive = useCallback(async () => {
+    setLiveStatus('connecting');
+    setLiveError(null);
+    try {
+      const session = await playWhep({
+        whepUrl: props.whepUrl,
+        onConnectionStateChange: (s) => {
+          if (s === 'connected') setLiveStatus('playing');
+          if (s === 'failed' || s === 'closed') {
+            setLiveStatus('error');
+            setLiveError(`conexão ${s === 'failed' ? 'falhou' : 'encerrada'}`);
+          }
+          if (s === 'disconnected') setLiveStatus('ended');
+        },
+      });
+      whepSessionRef.current = session;
+      if (videoRef.current) {
+        videoRef.current.srcObject = session.stream;
+        try {
+          await videoRef.current.play();
+        } catch {
+          // iOS Safari often blocks autoplay until user gesture.
+          setAutoplayBlocked(true);
+        }
+      }
+    } catch (err) {
+      setLiveError(err instanceof Error ? err.message : 'falha ao conectar');
+      setLiveStatus('error');
+    }
+  }, [props.whepUrl]);
+
+  useEffect(() => {
+    if (mode !== 'live') return;
+    void startLive();
+    return () => {
+      void whepSessionRef.current?.stop();
+      whepSessionRef.current = null;
+    };
+  }, [mode, startLive]);
+
+  useEffect(() => {
+    if (mode !== 'vod' || !props.hlsUrl) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.srcObject = null;
+    setVodStatus('loading');
+    setVodError(null);
+
+    const onError = () => {
+      setVodError('falha ao carregar replay');
+      setVodStatus('error');
+    };
+
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = props.hlsUrl;
+      const onCanPlay = () => setVodStatus('playing');
+      video.addEventListener('canplay', onCanPlay, { once: true });
+      video.addEventListener('error', onError);
+      return () => {
+        video.removeEventListener('canplay', onCanPlay);
+        video.removeEventListener('error', onError);
+        video.src = '';
+      };
+    }
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({ enableWorker: false });
+      hls.loadSource(props.hlsUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setVodStatus('playing');
+        video.play().catch(() => setAutoplayBlocked(true));
+      });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          setVodError(`replay error: ${data.type}`);
+          setVodStatus('error');
+        }
+      });
+      return () => {
+        hls.destroy();
+      };
+    }
+
+    setVodError('reprodução hls não suportada neste navegador');
+    setVodStatus('error');
+  }, [mode, props.hlsUrl]);
+
+  const unmute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = false;
+      void videoRef.current.play();
+      setAutoplayBlocked(false);
+    }
+  };
+
+  const switchToReplay = () => {
+    void whepSessionRef.current?.stop();
+    whepSessionRef.current = null;
+    setMode('vod');
+  };
+
+  const handleShare = async () => {
+    if (typeof window === 'undefined') return;
+    const url = `${window.location.origin}/live/${props.uid}`;
+    const shareData = { title: `${props.title} · aevia`, url };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch {
+        // user cancelled — fall through to clipboard
+      }
+    }
+    await navigator.clipboard?.writeText(url);
+  };
+
+  const isLivePlaying = mode === 'live' && liveStatus === 'playing';
+  const isVodPlaying = mode === 'vod' && vodStatus === 'playing';
+  const elapsedLabel = formatTimeSince(props.startedISO);
+
+  return (
+    <div className="min-h-screen pb-28">
+      <TopChrome
+        creatorDisplayName={props.creatorDisplayName}
+        creatorAddress={props.creatorAddress}
+        onShare={handleShare}
+      />
+
+      <main className="mx-auto max-w-2xl">
+        <PlayerFrame
+          videoRef={videoRef}
+          mode={mode}
+          liveStatus={liveStatus}
+          vodStatus={vodStatus}
+          elapsedLabel={elapsedLabel}
+          autoplayBlocked={autoplayBlocked}
+          onUnmute={unmute}
+        />
+
+        <div className="flex flex-col gap-6 px-4 pt-5">
+          <PlaybackStatusRow
+            mode={mode}
+            liveStatus={liveStatus}
+            liveError={liveError}
+            vodError={vodError}
+            hlsUrl={props.hlsUrl}
+            vodProcessing={props.vodProcessing ?? false}
+            onRetryLive={startLive}
+            onSwitchToReplay={switchToReplay}
+            isLivePlaying={isLivePlaying}
+            isVodPlaying={isVodPlaying}
+          />
+
+          <TitleBlock
+            title={props.title}
+            creatorDisplayName={props.creatorDisplayName}
+            creatorAddress={props.creatorAddress}
+            startedISO={props.startedISO}
+            isLive={isLivePlaying}
+          />
+
+          <DescriptionBlock />
+
+          <PermanenceBlock
+            isLive={isLivePlaying || isVodPlaying}
+            manifestCid={props.manifestCid}
+            registerBlock={props.registerBlock}
+            registerTxHash={props.registerTxHash}
+          />
+
+          <ReactionStrip counts={MOCK_REACTION_COUNTS} className="flex-wrap" />
+
+          <ChatBlock />
+        </div>
+      </main>
+
+      <BottomNav />
+    </div>
+  );
+}
+
+// ---- Helpers -------------------------------------------------------------
+
+function formatTimeSince(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffMs = Date.now() - then;
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'começou agora';
+  if (mins < 60) return `começou há ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `começou há ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days} ${days === 1 ? 'dia' : 'dias'}`;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '··';
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : (parts[0]?.[1] ?? '');
+  return (first + last).toUpperCase();
+}
+
+// ---- Top chrome ----------------------------------------------------------
+
+function TopChrome({
+  creatorDisplayName,
+  creatorAddress,
+  onShare,
+}: {
+  creatorDisplayName: string;
+  creatorAddress: `0x${string}` | null;
+  onShare: () => void;
+}) {
+  const creatorHref = creatorAddress ? `/creator/${creatorAddress}` : '/discover';
+  return (
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center bg-[#1C2027]/65 px-4 backdrop-blur-[20px]">
+      <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/feed"
+            aria-label="voltar"
+            className="rounded-full p-1.5 text-on-surface transition-colors hover:bg-surface-container"
+          >
+            <ArrowLeft className="size-5" aria-hidden />
+          </Link>
+          <Link
+            href={creatorHref}
+            className="flex items-center gap-2 rounded-full bg-surface-container py-1 pr-3 pl-1 transition-colors hover:bg-surface-high"
+          >
+            <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary-container font-label font-semibold text-[11px] text-on-primary">
+              {initials(creatorDisplayName)}
+            </span>
+            <span className="font-body font-medium text-on-surface text-sm lowercase">
+              {creatorDisplayName}
+            </span>
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="compartilhar"
+            onClick={onShare}
+            className="rounded-full p-2 text-on-surface/70 transition-colors hover:bg-surface-container hover:text-on-surface"
+          >
+            <Share2 className="size-5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="mais opções"
+            className="rounded-full p-2 text-on-surface/70 transition-colors hover:bg-surface-container hover:text-on-surface"
+          >
+            <MoreHorizontal className="size-5" aria-hidden />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+// ---- Player frame with overlays -----------------------------------------
+
+function PlayerFrame({
+  videoRef,
+  mode,
+  liveStatus,
+  vodStatus,
+  elapsedLabel,
+  autoplayBlocked,
+  onUnmute,
+}: {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  mode: ViewerMode;
+  liveStatus: LiveStatus;
+  vodStatus: VodStatus;
+  elapsedLabel: string;
+  autoplayBlocked: boolean;
+  onUnmute: () => void;
+}) {
+  const isLivePlaying = mode === 'live' && liveStatus === 'playing';
+  const isVodPlaying = mode === 'vod' && vodStatus === 'playing';
+  const isIdleBuffering =
+    (mode === 'live' && (liveStatus === 'idle' || liveStatus === 'connecting')) ||
+    (mode === 'vod' && (vodStatus === 'idle' || vodStatus === 'loading'));
+
+  return (
+    <div className="relative aspect-video w-full overflow-hidden bg-surface-high">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        controls={mode === 'vod'}
+        className="h-full w-full object-contain"
+      />
+
+      {/* Live chip with elapsed time — top-left */}
+      {isLivePlaying && (
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-sm bg-black/80 px-2 py-1 font-label text-[10px] text-white uppercase tracking-wider">
+          <span aria-hidden className="aevia-live-pulse size-1.5 rounded-full" />
+          ao vivo · {elapsedLabel.replace('começou há ', '')}
+        </span>
+      )}
+
+      {/* Viewer count chip — top-right, mock */}
+      {(isLivePlaying || isVodPlaying) && (
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-sm bg-black/60 px-2 py-1 font-label text-[10px] text-white lowercase">
+          + 298 assistindo · amostra
+        </span>
+      )}
+
+      {/* Presence row — bottom-left, mock */}
+      {(isLivePlaying || isVodPlaying) && (
+        <div className="absolute bottom-3 left-3">
+          <PresenceRow viewers={MOCK_PRESENCE} total={22} className="[&>*]:text-white" />
+        </div>
+      )}
+
+      {/* Autoplay gate */}
+      {autoplayBlocked && (
+        <button
+          type="button"
+          onClick={onUnmute}
+          className="absolute inset-0 flex items-center justify-center bg-background/80 font-headline font-medium text-lg text-on-surface lowercase"
+        >
+          toque para ativar o som
+        </button>
+      )}
+
+      {/* Idle / buffering state */}
+      {isIdleBuffering && !autoplayBlocked && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="inline-flex size-16 items-center justify-center rounded-full bg-black/60">
+            <Play className="size-7 text-white" aria-hidden />
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Playback status row -------------------------------------------------
+
+function PlaybackStatusRow({
+  mode,
+  liveStatus,
+  liveError,
+  vodError,
+  hlsUrl,
+  vodProcessing,
+  onRetryLive,
+  onSwitchToReplay,
+  isLivePlaying,
+  isVodPlaying,
+}: {
+  mode: ViewerMode;
+  liveStatus: LiveStatus;
+  liveError: string | null;
+  vodError: string | null;
+  hlsUrl: string | null;
+  vodProcessing: boolean;
+  onRetryLive: () => void;
+  onSwitchToReplay: () => void;
+  isLivePlaying: boolean;
+  isVodPlaying: boolean;
+}) {
+  if (isLivePlaying || isVodPlaying) return null;
+
+  if (mode === 'live' && liveStatus === 'ended' && hlsUrl) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container p-4 font-body text-on-surface/80 text-sm lowercase">
+        transmissão encerrada.
+        <button
+          type="button"
+          onClick={onSwitchToReplay}
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-label text-on-primary text-xs lowercase"
+        >
+          <Rewind className="size-3.5" aria-hidden />
+          assistir replay
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === 'live' && liveError) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container p-4 font-body text-danger text-sm lowercase">
+        erro: {liveError}
+        <button
+          type="button"
+          onClick={onRetryLive}
+          className="inline-flex items-center gap-1.5 rounded-full bg-surface-high px-3 py-1.5 font-label text-on-surface text-xs lowercase"
+        >
+          tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === 'vod' && vodError) {
+    return (
+      <div className="rounded-md bg-surface-container p-4 font-body text-danger text-sm lowercase">
+        erro: {vodError}
+      </div>
+    );
+  }
+
+  if (mode === 'vod' && !hlsUrl && vodProcessing) {
+    return (
+      <div className="rounded-md bg-surface-container p-4 font-body text-on-surface/70 text-sm lowercase">
+        gravação ainda sendo processada pelo cloudflare. tente novamente em alguns minutos.
+      </div>
+    );
+  }
+
+  if (mode === 'vod' && !hlsUrl && !vodProcessing) {
+    return (
+      <div className="rounded-md bg-surface-container p-4 font-body text-on-surface/70 text-sm lowercase">
+        nenhuma gravação disponível para esta transmissão.
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ---- Title + byline ------------------------------------------------------
+
+function TitleBlock({
+  title,
+  creatorDisplayName,
+  creatorAddress,
+  startedISO,
+  isLive,
+}: {
+  title: string;
+  creatorDisplayName: string;
+  creatorAddress: `0x${string}` | null;
+  startedISO: string;
+  isLive: boolean;
+}) {
+  const creatorHref = creatorAddress ? `/creator/${creatorAddress}` : '/discover';
+  return (
+    <section aria-labelledby="player-title" className="flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <h1
+          id="player-title"
+          className="flex-1 font-headline font-semibold text-[22px] text-on-surface leading-tight lowercase"
+        >
+          {title}
+        </h1>
+        {isLive && <VigilChip />}
+      </div>
+      <p className="font-label text-[11px] text-on-surface/60 lowercase">
+        <Link href={creatorHref} className="hover:text-on-surface">
+          {creatorDisplayName}
+        </Link>
+        <span aria-hidden> · </span>
+        {isLive ? formatTimeSince(startedISO) : 'replay'}
+      </p>
+    </section>
+  );
+}
+
+// ---- Description (mock, honest) -----------------------------------------
+
+function DescriptionBlock() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <section aria-label="descrição" className="flex flex-col gap-2">
+      <p className={`font-body text-on-surface/80 text-sm ${expanded ? '' : 'line-clamp-2'}`}>
+        descrição da transmissão ainda não disponível na interface — os criadores poderão editar
+        título e descrição antes de ir ao ar na sprint 3. por ora mostramos o título cadastrado no
+        cloudflare stream. o resumo completo, capítulos e transcrição automática virão junto com o
+        pipeline de processamento em batch.
+      </p>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="inline-flex items-center gap-1 self-start font-label text-on-surface/60 text-xs lowercase hover:text-on-surface"
+      >
+        {expanded ? 'recolher' : 'ler mais'}
+        {expanded ? (
+          <ChevronUp className="size-3.5" aria-hidden />
+        ) : (
+          <ChevronDown className="size-3.5" aria-hidden />
+        )}
+      </button>
+    </section>
+  );
+}
+
+// ---- Permanence receipt --------------------------------------------------
+
+function PermanenceBlock({
+  isLive,
+  manifestCid,
+  registerBlock,
+  registerTxHash,
+}: {
+  isLive: boolean;
+  manifestCid: string | null;
+  registerBlock: number | null;
+  registerTxHash: string | null;
+}) {
+  const layers = isLive ? (['providers', 'edge'] as const) : (['edge'] as const);
+  const label = isLive ? 'edge + provider nodes' : 'edge gateway (hls)';
+  const anchored = Boolean(manifestCid && registerBlock && registerTxHash);
+
+  return (
+    <section
+      aria-label="permanência"
+      className="flex flex-col gap-3 rounded-md bg-surface-container p-4"
+    >
+      <div className="flex items-center gap-3">
+        <PermanenceStrip layers={layers} width={96} aria-label={`persistência: ${label}`} />
+        <p className="font-label text-[11px] text-on-surface/70 lowercase">persistência: {label}</p>
+      </div>
+
+      {anchored ? (
+        <div className="flex flex-col gap-1 border-outline-variant/30 border-t pt-3 font-mono text-[10px] text-on-surface/60">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="uppercase tracking-wider">manifesto</span>
+            <code className="truncate">cid: {manifestCid?.slice(0, 18)}…</code>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="uppercase tracking-wider">bloco</span>
+            <a
+              href={`https://sepolia.basescan.org/tx/${registerTxHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-primary-dim hover:text-primary"
+            >
+              #{registerBlock}
+              <ExternalLink className="size-3" aria-hidden />
+            </a>
+          </div>
+        </div>
+      ) : (
+        <p className="border-outline-variant/30 border-t pt-3 font-label text-[11px] text-on-surface/50 lowercase">
+          manifesto on-chain em breve · sprint 3
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ---- Chat (mock, honest) -------------------------------------------------
+
+interface ChatMessage {
+  id: string;
+  name: string;
+  text: string;
+  initials: string;
+}
+
+const MOCK_CHAT: ChatMessage[] = [
+  {
+    id: 'c1',
+    name: 'marcos silva',
+    initials: 'MS',
+    text: 'amém pastor, essa palavra renova a alma hoje.',
+  },
+  {
+    id: 'c2',
+    name: 'lúcia beltrão',
+    initials: 'LB',
+    text: 'estamos em 4 aqui assistindo juntos em casa!',
+  },
+  {
+    id: 'c3',
+    name: 'ir. antônio',
+    initials: 'IA',
+    text: 'compartilhando com o grupo da célula agora.',
+  },
+];
+
+function ChatBlock() {
+  return (
+    <section aria-labelledby="chat-heading" className="flex flex-col gap-3 pb-2">
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          id="chat-heading"
+          className="font-headline font-semibold text-base text-on-surface lowercase"
+        >
+          bate-papo
+        </h2>
+        <span className="font-label text-[10px] text-on-surface/50 uppercase tracking-[0.15em]">
+          amostra · sprint 3
+        </span>
+      </div>
+      <ul className="flex flex-col gap-3">
+        {MOCK_CHAT.map((msg) => (
+          <li key={msg.id} className="flex items-start gap-2">
+            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-container font-label font-semibold text-[10px] text-on-primary">
+              {msg.initials}
+            </span>
+            <div className="flex flex-col">
+              <span className="font-body font-medium text-on-surface text-sm lowercase">
+                {msg.name}
+              </span>
+              <span className="font-body text-on-surface/80 text-sm">{msg.text}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-2 rounded-full bg-surface-container px-3 py-1.5">
+        <input
+          type="text"
+          disabled
+          placeholder="envio habilitado na sprint 3"
+          className="flex-1 bg-transparent font-body text-on-surface/60 text-sm placeholder:text-on-surface/30 focus:outline-none lowercase"
+        />
+        <button
+          type="button"
+          aria-label="enviar mensagem"
+          disabled
+          className="inline-flex size-8 items-center justify-center rounded-full bg-surface-high text-on-surface/40"
+        >
+          <Send className="size-4" aria-hidden />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ---- Mocks ---------------------------------------------------------------
+
+const MOCK_REACTION_COUNTS = {
+  amem: 428,
+  orar: 211,
+  boost: 87,
+  salvar: 43,
+  apoiar: 22,
+} as const;
+
+const MOCK_PRESENCE = [
+  { id: 'p1', name: 'Lucas Andrade' },
+  { id: 'p2', name: 'Marina Pires' },
+  { id: 'p3', name: 'Elias Ramos' },
+  { id: 'p4', name: 'Ana Teixeira' },
+];

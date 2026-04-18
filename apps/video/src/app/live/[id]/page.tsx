@@ -1,6 +1,7 @@
+import { PlayerScreen } from '@/components/player-screen';
 import { getLiveInput, getVideo, listLiveInputVideos } from '@/lib/cloudflare/stream-client';
+import { shortAddress } from '@aevia/auth';
 import { notFound } from 'next/navigation';
-import { Viewer } from './viewer';
 
 export const runtime = 'edge';
 
@@ -57,14 +58,27 @@ export default async function LiveViewerPage({ params }: { params: Promise<{ id:
     }
   }
 
+  const creatorAddress = (
+    (live.meta?.creatorAddress ?? live.defaultCreator ?? '') as string
+  ).toLowerCase() as `0x${string}` | '';
+  const creatorDisplayName =
+    live.meta?.creator ??
+    (creatorAddress ? shortAddress(creatorAddress as `0x${string}`) : 'aevia');
+
   return (
-    <Viewer
+    <PlayerScreen
       uid={live.uid}
+      title={live.meta?.name ?? 'sem título'}
       whepUrl={live.webRTCPlayback.url}
       hlsUrl={vodHlsUrl}
       vodProcessing={vodProcessing}
-      creator={live.defaultCreator ?? live.meta?.creator ?? 'anonymous'}
+      creatorDisplayName={creatorDisplayName}
+      creatorAddress={creatorAddress || null}
       state={state}
+      startedISO={live.created}
+      manifestCid={live.meta?.manifestCid ?? null}
+      registerBlock={live.meta?.registerBlock ? Number(live.meta.registerBlock) : null}
+      registerTxHash={live.meta?.registerTxHash ?? null}
     />
   );
 }
