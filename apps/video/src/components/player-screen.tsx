@@ -544,12 +544,17 @@ function PlayerFrame({
 
   return (
     <div className="relative aspect-video w-full overflow-hidden bg-surface-high">
+      {/* Native controls render in both live and vod. We start `muted` so
+          autoplay survives Chrome/Safari policies; the controls let the
+          viewer unmute on first interaction. For live MediaStream the
+          browser hides seek (no duration), so the live UX collapses to
+          play/pause + volume — exactly what the viewer needs. */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        controls={mode === 'vod'}
+        controls
         className="h-full w-full object-contain"
       />
 
