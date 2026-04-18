@@ -159,11 +159,12 @@ func (s *Session) EnsureHubFor(remote *webrtc.TrackRemote) (*webrtc.TrackLocalSt
 type Server struct {
 	api *webrtc.API
 
-	mu             sync.Mutex
-	sessions       map[string]*Session
-	sessionID      func() string
-	onSessionCbs   []func(*Session)
-	authorisedDIDs map[string]struct{}
+	mu                sync.Mutex
+	sessions          map[string]*Session
+	sessionID         func() string
+	onSessionCbs      []func(*Session)
+	authorisedDIDs    map[string]struct{}
+	requireSignatures bool
 }
 
 // Options configure a Server. Zero value is fine for tests; production
@@ -180,6 +181,17 @@ type Options struct {
 	// where the node runs behind 1:1 NAT (cloud VMs that expose a
 	// public IP but internally bind a private RFC1918 address).
 	PublicIPs []string
+	// RequireSignatures forces every POST /whip to carry an EIP-191
+	// signature of the SDP offer in X-Aevia-Signature, which must
+	// recover to the address inside X-Aevia-DID. With the allowlist
+	// (AuthorisedDIDs) the flow is:
+	//   1. DID appears in allowlist → continue
+	//   2. recovered signer address matches the DID's address → accept
+	// Both must pass. If RequireSignatures is true but AuthorisedDIDs
+	// is empty, any *signed* DID is accepted — the signature alone
+	// binds the SDP to the creator's wallet, which is enough for
+	// attribution / abuse logging without a static whitelist.
+	RequireSignatures bool
 }
 
 // NewServer builds a whip.Server with a pion/webrtc API configured for
@@ -246,10 +258,11 @@ func NewServer(opts Options) (*Server, error) {
 		}
 	}
 	return &Server{
-		api:            api,
-		sessions:       make(map[string]*Session),
-		sessionID:      newSessionID,
-		authorisedDIDs: dids,
+		api:               api,
+		sessions:          make(map[string]*Session),
+		sessionID:         newSessionID,
+		authorisedDIDs:    dids,
+		requireSignatures: opts.RequireSignatures,
 	}, nil
 }
 
@@ -291,13 +304,16 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authorization check — allowlist-only for M8 MVP. Production upgrade
-	// path: X-Aevia-Signature header carrying an EIP-191 / EIP-712
-	// signature of the SDP offer, which we'd recover to a DID and compare.
-	if !s.checkAuth(r.Header.Get("X-Aevia-DID")) {
+	did := r.Header.Get("X-Aevia-DID")
+	sigHex := r.Header.Get("X-Aevia-Signature")
+
+	// Allowlist gate — empty allowlist means "anyone with any DID can
+	// publish", useful for local dev + CI. Production MUST set it.
+	if !s.checkAuth(did) {
 		http.Error(w, "whip: DID not authorised", http.StatusUnauthorized)
 		return
 	}
+
 	offerBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "whip: read body: "+err.Error(), http.StatusBadRequest)
@@ -307,6 +323,27 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if len(offerBytes) == 0 {
 		http.Error(w, "whip: empty SDP offer", http.StatusBadRequest)
 		return
+	}
+
+	// Signature gate — cryptographically bind the SDP offer to the
+	// creator's wallet. Required when RequireSignatures is set; when
+	// it's off but the client SENT a signature, we still validate it
+	// (incentivises clients to sign voluntarily and gives us defense-
+	// in-depth once the public beta flips this on).
+	if s.requireSignatures || sigHex != "" {
+		if sigHex == "" {
+			http.Error(w, "whip: X-Aevia-Signature required", http.StatusUnauthorized)
+			return
+		}
+		sig, err := ParseHexSignature(sigHex)
+		if err != nil {
+			http.Error(w, "whip: parse signature: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+		if err := VerifySignatureForDID(did, string(offerBytes), sig); err != nil {
+			http.Error(w, "whip: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
 	}
 
 	// Build the peer connection. For M8 the STUN/TURN list is empty —
