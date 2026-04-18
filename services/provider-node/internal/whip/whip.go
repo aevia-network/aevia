@@ -564,6 +564,16 @@ func (s *Server) ActiveSessions() []string {
 	return out
 }
 
+// ActiveSessionCount returns just the count — satisfies
+// httpx.ActiveSessionCounter without paying the allocation cost of
+// ActiveSessions() every time /healthz is scraped. Fase 2.2 candidate
+// ranking reads this as the load term (β·load).
+func (s *Server) ActiveSessionCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sessions)
+}
+
 // InjectSession registers a pre-built Session under its own ID so that
 // /whep/{id} can find it. Used by mirror.Server when it receives a
 // fan-out stream from an origin — the mirror builds a Session via

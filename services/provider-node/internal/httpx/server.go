@@ -34,6 +34,52 @@ const DefaultProtocol protocol.ID = "/aevia/http/1.0.0"
 
 // Server wraps an http.ServeMux and serves it on any number of transports
 // (libp2p stream, plain TCP, Unix socket, in-process pipe).
+// ActiveSessionCounter is a narrow interface the Fase 2.2 /healthz
+// extension uses to report how many WHIP sessions the node is serving.
+// Exposed as an interface so the httpx layer stays free of imports on
+// whip/mirror. Main.go supplies a thin wrapper around whip.Server.
+type ActiveSessionCounter interface {
+	ActiveSessionCount() int
+}
+
+// MirrorRanker is the Fase 2.2b plug-in that produces /mirrors/candidates
+// responses. Kept as a narrow interface so the httpx package doesn't
+// import the mirror package. Main.go wires a ranker + peer snapshot
+// source on boot.
+type MirrorRanker interface {
+	// CandidateSnapshot returns the current candidate pool with per-peer
+	// RTT/load/geo already populated. The httpx handler then applies
+	// scoring and serialises.
+	CandidateSnapshot() []MirrorCandidate
+	// Score applies the ranker's formula to the snapshot using the given
+	// viewer hint. Returns scored candidates sorted ascending.
+	Score(candidates []MirrorCandidate, viewerRegion string) []ScoredMirrorCandidate
+}
+
+// MirrorCandidate mirrors mirror.Candidate without importing the mirror
+// package into httpx. Fields 1:1 with mirror.Candidate.
+type MirrorCandidate struct {
+	PeerID         string
+	HTTPSBase      string
+	Region         string
+	Lat            float64
+	Lng            float64
+	LatLngKnown    bool
+	RTTEMAMs       float64
+	ActiveSessions int
+	ProbeLossPct   float64
+}
+
+// ScoredMirrorCandidate is the scored output shape.
+type ScoredMirrorCandidate struct {
+	MirrorCandidate
+	Score      float64
+	RTTTerm    float64
+	LoadTerm   float64
+	RegionTerm float64
+	RTTSource  string
+}
+
 type Server struct {
 	host     host.Host
 	mux      *http.ServeMux
@@ -41,6 +87,9 @@ type Server struct {
 	region   string
 	lat      *float64
 	lng      *float64
+
+	sessionCounter ActiveSessionCounter
+	mirrorRanker   MirrorRanker
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -67,6 +116,19 @@ func WithGeo(lat, lng float64) ServerOption {
 		s.lat = &lat
 		s.lng = &lng
 	}
+}
+
+// WithActiveSessionCounter plumbs a Fase 2.2 active-sessions source
+// into /healthz. Without this option, /healthz omits the field.
+func WithActiveSessionCounter(c ActiveSessionCounter) ServerOption {
+	return func(s *Server) { s.sessionCounter = c }
+}
+
+// WithMirrorRanker enables the /mirrors/candidates endpoint. Without
+// this option the endpoint returns 501. The ranker is typically
+// constructed in main.go wrapping mirror.Client + mirror.Ranker.
+func WithMirrorRanker(r MirrorRanker) ServerOption {
+	return func(s *Server) { s.mirrorRanker = r }
 }
 
 // NewServer wires the default handlers and returns a Server that can be
@@ -187,20 +249,33 @@ type healthResponse struct {
 	Region string   `json:"region,omitempty"`
 	Lat    *float64 `json:"lat,omitempty"`
 	Lng    *float64 `json:"lng,omitempty"`
+	// ActiveSessions is the count of live WHIP sessions this node is
+	// currently ingesting OR mirroring. Fase 2.2 candidate ranking uses
+	// it as the load term (β·load). Pointer so the field is omitted when
+	// the httpx.Server wasn't wired with an ActiveSessionCounter.
+	ActiveSessions *int `json:"active_sessions,omitempty"`
 }
 
 func (s *Server) registerDefaults() {
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		var active *int
+		if s.sessionCounter != nil {
+			n := s.sessionCounter.ActiveSessionCount()
+			active = &n
+		}
 		resp := healthResponse{
-			Status: "ok",
-			PeerID: s.host.ID().String(),
-			Region: s.region,
-			Lat:    s.lat,
-			Lng:    s.lng,
+			Status:         "ok",
+			PeerID:         s.host.ID().String(),
+			Region:         s.region,
+			Lat:            s.lat,
+			Lng:            s.lng,
+			ActiveSessions: active,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
+
+	s.mux.HandleFunc("GET /mirrors/candidates", s.handleMirrorCandidates)
 
 	// /latency-probe is a purpose-built RTT measurement endpoint —
 	// HEAD-optimised, zero body, no JSON marshal, no DB lookup, no

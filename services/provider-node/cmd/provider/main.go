@@ -157,20 +157,15 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		go d.RefreshLoop(ctx, pinned, aeviadht.DefaultRefreshPeriod)
 	}
 
-	httpxOpts := []httpx.ServerOption{}
-	if cfg.Region != "" {
-		httpxOpts = append(httpxOpts, httpx.WithRegion(cfg.Region))
-	}
-	if cfg.GeoSet {
-		httpxOpts = append(httpxOpts, httpx.WithGeo(cfg.GeoLat, cfg.GeoLng))
-	}
-	srv := httpx.NewServer(n.Host(), httpxOpts...)
-	content.NewHandlers().WithSource(cs).Register(srv)
-
 	// WHIP ingest + HLS live routing. Creators POST SDP to /whip; the
 	// CMAFSegmenter pipes fMP4 segments into LivePinSink (which pins
 	// each finalised segment via the pinning.ContentStore). LiveRouter
 	// serves /live/{id}/playlist.m3u8 + init.mp4 + segment/{n}.
+	//
+	// Constructed BEFORE httpx.NewServer so we can plumb the instance
+	// into /healthz (active_sessions) and /mirrors/candidates (load
+	// term) via ServerOptions. Handlers register onto the mux later
+	// via whipSrv.Register(srv).
 	whipSrv, err := whip.NewServer(whip.Options{
 		AuthorisedDIDs:    splitCSV(cfg.AllowedDIDs),
 		PublicIPs:         splitCSV(cfg.PublicIPs),
@@ -181,6 +176,16 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	}
 	liveRouter := whip.NewLiveRouter()
 	whipLog := logger.With().Str("component", "whip").Logger()
+
+	httpxOpts := []httpx.ServerOption{
+		httpx.WithActiveSessionCounter(whipSrv),
+	}
+	if cfg.Region != "" {
+		httpxOpts = append(httpxOpts, httpx.WithRegion(cfg.Region))
+	}
+	if cfg.GeoSet {
+		httpxOpts = append(httpxOpts, httpx.WithGeo(cfg.GeoLat, cfg.GeoLng))
+	}
 
 	// Mirror wiring (Fase 2.1) — bidirectional.
 	// Server side: accept inbound mirror streams from other origins,
@@ -247,6 +252,27 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		}
 		mirrorLog.Info().Strs("peers", ids).Str("event", "mirror_client_ready").Msgf("origin will fan out to %d mirror(s)", len(mirrorPeers))
 	}
+
+	// Fase 2.2b — hook mirror ranker into /mirrors/candidates. The
+	// adapter wraps the mirror.Client's live peerMetrics map and the
+	// stateless Ranker. For now the static pool equals the configured
+	// mirror peers (post-parse) enriched at request time with RTT from
+	// peerMetrics. Dynamic DHT discovery lands in Fase 2.2c.
+	ranker := mirror.NewRanker(mirror.DefaultWeights(), cfg.Region, cfg.GeoLat, cfg.GeoLng, cfg.GeoSet)
+	staticPool := make([]mirror.Candidate, 0, len(mirrorPeers))
+	for _, p := range mirrorPeers {
+		staticPool = append(staticPool, mirror.Candidate{PeerID: p.String()})
+	}
+	rankerAdapter := mirror.NewRankerAdapter(mirror.RankerAdapterConfig{
+		Client:     mirrorClient,
+		Ranker:     ranker,
+		StaticPool: staticPool,
+	})
+	httpxOpts = append(httpxOpts, httpx.WithMirrorRanker(rankerAdapter))
+
+	// Now that all httpx options are accumulated, build the server.
+	srv := httpx.NewServer(n.Host(), httpxOpts...)
+	content.NewHandlers().WithSource(cs).Register(srv)
 
 	whipSrv.OnSession(func(sess *whip.Session) {
 		sink, err := whip.NewLivePinSink(cs, sess.ID)
