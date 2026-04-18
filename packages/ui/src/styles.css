@@ -21,6 +21,7 @@
   --color-surface-lowest: #000000;
   --color-surface-low: #1a1c20;
   --color-surface-container: #181b20;
+  --color-surface-container-low: #14171b;
   --color-surface-high: #1d2127;
   --color-surface-highest: #22262e;
   --color-surface-bright: #282c34;
@@ -78,7 +79,23 @@
   height: 6px;
   border-radius: 9999px;
   background-color: var(--color-tertiary);
-  box-shadow: 0 0 8px var(--color-tertiary);
+  box-shadow: 0 0 0 0 rgb(168 195 181 / 0.7);
+  animation: aevia-mesh-pulse 2s infinite;
+}
+
+@keyframes aevia-mesh-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgb(168 195 181 / 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgb(168 195 181 / 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgb(168 195 181 / 0);
+  }
 }
 
 /**

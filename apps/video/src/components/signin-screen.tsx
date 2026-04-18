@@ -2,7 +2,7 @@
 
 import { useLogin, usePrivy } from '@aevia/auth/client';
 import { MeshDot } from '@aevia/ui';
-import { Apple, Fingerprint, HeartHandshake, Lock, Mail, Network } from 'lucide-react';
+import { Apple, Fingerprint, HeartHandshake, Lock, Mail, Network, X } from 'lucide-react';
 import Image from 'next/image';
 import { useRef } from 'react';
 
@@ -46,17 +46,35 @@ export function SignInScreen({ next }: { next?: string }) {
     // Privy's `login({ loginMethods })` restricts the modal's offered flows.
     // `email` → OTP flow; `google` / `apple` → OAuth; `passkey` → WebAuthn.
     // We pass a single-method array because these buttons are deliberate
-    // user choices; the primary "entrar" (not rendered here) would pass
-    // all methods.
+    // user choices. The "já tem conta? entrar" footer link below calls
+    // `loginAll` instead so returning users see every method they may have
+    // previously used.
     login({ loginMethods: [method] });
+  };
+
+  const loginAll = () => {
+    login();
   };
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col pb-12">
+      {/* Top-right close icon. Follows Stitch's pre-auth chrome pattern; in
+          our flow it navigates to aevia.network (the protocol home) rather
+          than closing a modal — matches the two-site architecture where
+          aevia.video is the creator app and aevia.network is the public
+          protocol surface. */}
+      <a
+        href="https://aevia.network"
+        aria-label="ir para aevia.network"
+        className="fixed top-3 right-3 z-50 flex size-10 items-center justify-center text-primary transition-opacity hover:opacity-80 active:scale-95"
+      >
+        <X className="size-6" aria-hidden />
+      </a>
+
       <div className="relative h-[280px] w-full overflow-hidden">
         <Image
-          src="/hero/signin.png"
-          alt="vela acesa sobre mesa de madeira rústica com livro de couro desgastado"
+          src="/hero/signin.jpg"
+          alt="caneta tinteiro sobre manuscrito — símbolo editorial do criador soberano"
           fill
           priority
           sizes="(max-width: 448px) 100vw, 448px"
@@ -80,7 +98,7 @@ export function SignInScreen({ next }: { next?: string }) {
         </p>
       </div>
 
-      <section className="mx-4 mt-10 flex flex-col gap-6 rounded-lg bg-surface-low p-5">
+      <section className="mx-4 mt-10 flex flex-col gap-6 rounded-[12px] bg-surface-container-low p-5">
         <ValueProp
           icon={<Lock className="size-[22px] text-primary" aria-hidden />}
           title="sua identidade é sua"
@@ -143,7 +161,7 @@ export function SignInScreen({ next }: { next?: string }) {
         </p>
       </div>
 
-      <div className="mx-4 mt-8 flex items-start gap-3 rounded-lg bg-surface-low p-4">
+      <div className="mx-4 mt-8 flex items-start gap-3 rounded-lg bg-surface-container-low p-4">
         <div className="mt-0.5 flex size-5 flex-shrink-0 items-center justify-center rounded-sm bg-primary">
           <svg
             className="size-3 text-on-primary"
@@ -173,6 +191,17 @@ export function SignInScreen({ next }: { next?: string }) {
       </div>
 
       <footer className="mt-12 flex w-full flex-col items-center gap-6 px-8">
+        <p className="font-body text-sm text-on-surface lowercase">
+          já tem conta?{' '}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={loginAll}
+            className="cursor-pointer text-primary underline disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            entrar
+          </button>
+        </p>
         <div className="flex flex-col items-center gap-1 opacity-20">
           <p className="font-label text-[10px] uppercase tracking-[0.02em]">
             v0.1 · cloudflare + base l2 · aberto e auditável
