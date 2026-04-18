@@ -24,7 +24,7 @@
   "scripts": {
     "generate": "buf generate",
     "lint": "buf lint && biome check .",
-    "breaking": "buf breaking --against 'https://github.com/Leeaandrob/aevia.git#branch=main,subdir=packages/protocol'",
+    "breaking": "buf breaking --against 'https://github.com/aevia-network/aevia.git#branch=main,subdir=packages/protocol'",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .turbo dist src/gen"
   },

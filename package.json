@@ -6,7 +6,7 @@
   "homepage": "https://aevia.network",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Leeaandrob/aevia.git"
+    "url": "git+https://github.com/aevia-network/aevia.git"
   },
   "license": "SEE LICENSE IN LICENSES.md",
   "packageManager": "pnpm@10.30.1",

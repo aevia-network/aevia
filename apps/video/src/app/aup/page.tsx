@@ -267,7 +267,7 @@ function FullPolicyLink() {
         sprint 3.
       </p>
       <a
-        href="https://github.com/Leeaandrob/videoengine/tree/main/docs/aup"
+        href="https://github.com/aevia-network/aevia/tree/main/docs/aup"
         target="_blank"
         rel="noreferrer"
         className="mt-1 inline-flex items-center gap-1.5 font-label text-primary-dim text-sm lowercase hover:text-primary"

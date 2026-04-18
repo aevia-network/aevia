@@ -576,7 +576,7 @@ export const en: Dictionary = {
     subtitle:
       'six normative documents in ietf style. they govern manifest schema, content addressing, identity, aup, persistence pool, and risk score.',
     stamp:
-      'version 0.1 · canonical source github.com/Leeaandrob/aevia/tree/main/docs/protocol-spec',
+      'version 0.1 · canonical source github.com/aevia-network/aevia/tree/main/docs/protocol-spec',
     coverA:
       'aevia rfcs follow the ietf style and use rfc 2119 for normative language — MUST and SHOULD carry weight. they are at once the source of truth for implementers and the public contract that investors and lawyers can read.',
     coverB:

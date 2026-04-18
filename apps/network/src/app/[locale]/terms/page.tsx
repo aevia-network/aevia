@@ -118,7 +118,7 @@ export default async function Terms({ params }: { params: Promise<{ locale: stri
             </Link>
             {t.ipBodyB}{' '}
             <a
-              href="https://github.com/Leeaandrob/aevia/blob/main/LICENSES.md"
+              href="https://github.com/aevia-network/aevia/blob/main/LICENSES.md"
               className="text-primary hover:text-primary-dim underline"
             >
               {t.ipBodyLicensesLink}

@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 const CONTENT_REGISTRY = '0x07ff…5592F0';
 const SPEC_VERSION = 'v0.1';
-const SOURCE_URL = 'https://github.com/Leeaandrob/aevia';
+const SOURCE_URL = 'https://github.com/aevia-network/aevia';
 
 export function Footer({ locale, dict }: { locale: Locale; dict: Dictionary }) {
   const f = dict.common.footer;

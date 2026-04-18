@@ -572,7 +572,8 @@ export const ptBR = {
     title: 'specification',
     subtitle:
       'seis documentos normativos no estilo ietf. regem manifesto schema, content addressing, identidade, aup, persistence pool e risk score.',
-    stamp: 'versão 0.1 · fonte canônica github.com/Leeaandrob/aevia/tree/main/docs/protocol-spec',
+    stamp:
+      'versão 0.1 · fonte canônica github.com/aevia-network/aevia/tree/main/docs/protocol-spec',
     coverA:
       'rfcs da aevia seguem o estilo ietf e usam rfc 2119 para linguagem normativa — MUST e SHOULD têm peso. são ao mesmo tempo a fonte da verdade para implementadores e o contrato público que investidores e juristas podem ler.',
     coverB:
