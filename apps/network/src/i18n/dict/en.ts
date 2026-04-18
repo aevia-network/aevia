@@ -566,6 +566,173 @@ export const en: Dictionary = {
     contactBody2:
       '. postal deliveries must be addressed to aevia llc’s registered agent in the state of delaware (details provided upon request).',
   },
+  operator: {
+    meta: {
+      title: 'operator · aevia.network',
+      description:
+        'aevia llc — who it is, what it operates, what it does not control. the formal operator/protocol separation.',
+    },
+    eyebrow: 'policy · operator',
+    title: 'operator',
+    subtitle:
+      'aevia llc is a delaware limited liability company that operates services around the aevia protocol. this page declares what the llc controls, what it does not control, and what the architecture guarantees the llc can never unilaterally control.',
+    stamp: 'version 0.1 · published 2026-04-18 · aevia llc · delaware, usa',
+    leadParagraphs: [
+      'the operator/protocol separation is the architectural backbone of aevia’s defense against three threats: regulatory capture (howey test), erosion of provider-node trust, and opaque editorial enforcement. this page translates that separation into concrete terms: which addresses the llc controls, which flows feed the operational treasury, which decisions the operator can never make unilaterally.',
+      'normative references: rfc-8 (economic architecture) specifies the 4 treasuries and the 12 invariants. rfc-7 (moderation and council) specifies which parameters are governed by the council rather than the operator. rfc-5 (persistence pool) specifies the programmatic settlement by which provider nodes are compensated. this page is an operational summary; it does not replace the specifications.',
+    ],
+    legalTitle: 'legal structure',
+    legalBody:
+      'aevia llc is a limited liability company registered in the state of delaware, united states of america. majority member and ceo: leandro barbosa. registered agent and process-of-service address disclosed upon certified-mail request. operational contact: contact@aevia.network. the operating agreement is private; operational flows that affect the protocol are public and described here and in the referenced rfcs.',
+    legalFuture:
+      'future structure (pending lawyer consult, tracked by rfc-8 §9.3 bootstrap): migration to the signal foundation model — aevia llc keeps commercial operations (aevia.video, relayer, aggregator, enterprise, b2b saas); an offshore foundation (jurisdiction tbd) takes custody of the persistence pool and council fund. legal separation between operational revenue and protocol treasury. adrs 0006 and 0007 track this transition.',
+    operatesTitle: 'what aevia llc operates',
+    operatesLead:
+      'five services. each has an explicit counterpart in revenue (rfc-8 §6), invariant (rfc-8 §7), and point of council contestation (rfc-7 §4) where applicable.',
+    operatesItems: [
+      {
+        tag: 'aevia.video',
+        text: 'reference client of the protocol. creator onboarding, video ingest (whip), viewer playback (whep/hls), curated feed, boost ui. 10% take-rate on tip/subscription flows. rfc-8 §6.3.',
+      },
+      {
+        tag: 'relayer',
+        text: 'gas-sponsored service for registering manifests to the content registry. creator signs eip-712 (rfc-3), relayer submits the transaction and charges $0.25 cusdc per registration. rfc-8 §6.1.',
+      },
+      {
+        tag: 'settlement aggregator',
+        text: 'computes provider-node payouts off-chain from challenge-response receipts (rfc-5 §4) and submits them to the persistence pool. charges 0.5% of settlement volume per epoch. rfc-8 §6.2. 72h contestation window (rfc-8 inv-10).',
+      },
+      {
+        tag: 'risk classifier',
+        text: 'b2b saas service that exposes the scoring engine output (rfc-6) to third-party clients operating their own aevia instances. priced per contract. rfc-8 §6.5.',
+      },
+      {
+        tag: 'enterprise deployments',
+        text: 'private provider-node networks and customized aevia clients for ministries, ngos, media organizations. priced per contract. rfc-8 §6.4.',
+      },
+    ],
+    notControlsTitle: 'what aevia llc does not control',
+    notControlsLead:
+      'four protocol-level primitives. the llc cannot alter them unilaterally. enforcement is via solidity contract (where possible) or via council-only multisig policy (where not).',
+    notControlsItems: [
+      {
+        tag: 'persistence pool',
+        text: 'programmatic treasury that pays provider nodes for audited replication. llc funds during bootstrap (one-way, no clawback); after bootstrap only the credit pulse feeds it. llc cannot withdraw. rfc-8 §3.2 + inv-1/inv-2.',
+      },
+      {
+        tag: 'council fund',
+        text: 'governance-only treasury. signers are the 12 council members, ≥7/12 threshold. funds stipends, audits, trust-ledger publication. llc is not a signer. rfc-8 §3.5 + inv-3.',
+      },
+      {
+        tag: 'risk score parameters',
+        text: 'r(c) formula weights α/β/γ, thresholds θ_subsidy/θ_feed/θ_review, classifier version, scoring-service signer key. all council-governable per rfc-7 §4. llc cannot change them absent formal proposal + ≥7/12 + veto window.',
+      },
+      {
+        tag: 'boost router split',
+        text: 'default split 50% creator / 30% pool / 19% llc / 1% council is council-governable. llc cannot unilaterally redirect it. rfc-8 §4.3.',
+      },
+    ],
+    revenueTitle: 'llc revenue flows',
+    revenueLead:
+      'the aevia llc treasury receives exclusively service fees. every flow is formalized in rfc-8 §6 and audited via on-chain event (rfc-8 inv-9).',
+    revenueItems: [
+      {
+        tag: 'boost router llc share',
+        text: '19% (1 900 bps) of every boost gross. rfc-8 §4.3.',
+      },
+      {
+        tag: 'aevia.video take-rate',
+        text: '10% (1 000 bps) of tips and subscriptions routed through the creator escrow. rfc-8 §6.3.',
+      },
+      {
+        tag: 'relayer fee',
+        text: 'flat $0.25 cusdc per manifest registered via the relayer. rfc-8 §6.1.',
+      },
+      {
+        tag: 'aggregator fee',
+        text: '0.5% (50 bps) of persistence-pool settlement total per epoch. rfc-8 §6.2.',
+      },
+      {
+        tag: 'enterprise deployments',
+        text: 'per contract. rfc-8 §6.4.',
+      },
+      {
+        tag: 'risk classifier b2b saas',
+        text: 'per api-call or per contract. rfc-8 §6.5.',
+      },
+    ],
+    brightLinesTitle: 'bright lines — what the llc can never do',
+    brightLinesLead:
+      'the 12 invariants of rfc-8 §7 are enforced by contract or by multisig policy. violating any of them simultaneously destroys the howey defense, provider-node trust, and the §230 posture. the most critical:',
+    brightLinesItems: [
+      {
+        tag: 'inv-1/inv-2',
+        text: 'llc never withdraws from the persistence pool. bootstrap is one-way, no clawback.',
+      },
+      {
+        tag: 'inv-3/inv-4',
+        text: 'llc never withdraws from the council fund. council-governable parameters are never llc-unilateral.',
+      },
+      {
+        tag: 'inv-7/inv-8',
+        text: 'treasuries hold only cusdc. the protocol never issues a native token.',
+      },
+      {
+        tag: 'inv-9',
+        text: 'every inter-treasury transfer emits an auditable on-chain event.',
+      },
+      {
+        tag: 'inv-10',
+        text: 'aggregator settlement has a ≥72h contestation window before funds become claimable.',
+      },
+      {
+        tag: 'inv-11',
+        text: 'boost router gates on r(c) < θ_feed. content excluded by the aup never receives paid amplification.',
+      },
+    ],
+    addressesTitle: 'on-chain addresses',
+    addressesLead:
+      'operational addresses are published as deployments land. format: safe multisig + threshold. changes are announced on the trust ledger with ≥14 days notice (rfc-7 §6).',
+    addressesHeaders: {
+      label: 'treasury',
+      address: 'address',
+      network: 'network',
+      threshold: 'threshold',
+    },
+    addressesTable: [
+      {
+        label: 'llc treasury',
+        address: 'tbd — pending lawyer consult + safe deployment',
+        network: 'base mainnet',
+        threshold: '2-of-3',
+      },
+      {
+        label: 'council fund',
+        address: 'tbd — pending council bootstrap (rfc-7 §10)',
+        network: 'base mainnet',
+        threshold: '≥7-of-12',
+      },
+      {
+        label: 'persistence pool',
+        address: 'on sepolia — address published in site footer',
+        network: 'base sepolia (testnet)',
+        threshold: 'aggregator + council veto',
+      },
+      {
+        label: 'aggregator signer',
+        address: 'tbd — pending bootstrap',
+        network: 'base mainnet',
+        threshold: '1-of-1 (decentralization in future rfc)',
+      },
+    ],
+    changesTitle: 'changes to this page',
+    changesBody:
+      'material changes (treasury addresses, legal structure, revenue flows, invariants) are announced on the trust ledger (rfc-7 §6) with ≥14 days notice. editorial changes (wording corrections, updated rfc version references) are published immediately and tracked in docs/changelog/.',
+    contactTitle: 'operational contact',
+    contactBody1: 'aevia llc · delaware, usa ·',
+    contactBody2:
+      '. investor inquiries, strategic partnership, due diligence, legal or regulatory questions. we reply on business days.',
+  },
   spec: {
     meta: {
       title: 'spec · aevia.network',
