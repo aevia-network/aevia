@@ -3,6 +3,7 @@
 import type { LiveRowData } from '@/app/dashboard/live-row';
 import { LiveRow } from '@/app/dashboard/live-row';
 import { BottomNav } from '@/components/bottom-nav';
+import { ClientOnly } from '@/components/client-only';
 import { LogoutButton } from '@/components/logout-button';
 import {
   ArrowLeft,
@@ -303,13 +304,40 @@ function TransmissionsSection({ lives }: { lives: LiveRowData[] }) {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {lives.map((l) => (
-            <LiveRow key={l.uid} live={l} />
-          ))}
-        </div>
+        // ClientOnly defers Privy hook calls inside <LiveRow> (useWallets,
+        // useSignTypedData, useSendTransaction) until after first paint, so
+        // the back-navigation race against the dynamic AeviaPrivyProvider
+        // can't crash the page. Fallback renders same-shape skeleton rows
+        // so layout stays stable while the hook gate flips open.
+        <ClientOnly fallback={<TransmissionsSkeleton count={lives.length} />}>
+          <div className="flex flex-col gap-3">
+            {lives.map((l) => (
+              <LiveRow key={l.uid} live={l} />
+            ))}
+          </div>
+        </ClientOnly>
       )}
     </section>
+  );
+}
+
+function TransmissionsSkeleton({ count }: { count: number }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {Array.from({ length: Math.min(count, 4) }).map((_, i) => (
+        <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: skeleton list is fixed-length per render
+          key={i}
+          className="flex items-center gap-3 rounded-md bg-surface-container p-4"
+        >
+          <div className="size-16 shrink-0 rounded-md bg-surface-high" />
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="h-4 w-3/4 rounded bg-surface-high" />
+            <div className="h-3 w-1/2 rounded bg-surface-high/60" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
