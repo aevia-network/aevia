@@ -1,8 +1,9 @@
-go 1.26
+go 1.26.1
 
 use (
 	./services/provider-node
 	./services/recorder
 	./services/manifest-svc
 	./services/indexer
+	./services/coordinator
 )
