@@ -29,6 +29,37 @@ export function getServerEnv(): ServerEnv {
 }
 
 /**
+ * Cloudflare Realtime TURN env — optional. When both vars are present, the
+ * `/api/webrtc/ice-servers` route can mint short-lived TURN credentials so
+ * WHIP/WHEP clients survive CGNAT/firewall/UDP-throttled networks (the
+ * Vivo 4G failure mode reported on 2026-04-18). When ANY is absent, the
+ * route returns just STUN, falling back to the existing best-effort
+ * NAT traversal — clients keep working but lose the relay safety net.
+ *
+ * Token comes from CF dashboard → Realtime → TURN → Create TURN Key. The
+ * TOKEN_ID is the public identifier; the API_TOKEN is the secret used to
+ * mint per-session credentials. Cloudflare bills $0.05/GB outbound from
+ * TURN, with a 1 TB/month free allowance shared with Realtime SFU usage —
+ * which means TURN traffic for our Stream WHIP/WHEP path is FREE under
+ * the Stream Realtime umbrella (no double-billing per CF docs).
+ */
+const realtimeTurnSchema = z.object({
+  CLOUDFLARE_REALTIME_TURN_TOKEN_ID: z.string().min(1),
+  CLOUDFLARE_REALTIME_TURN_API_TOKEN: z.string().min(1),
+});
+
+export type RealtimeTurnEnv = z.infer<typeof realtimeTurnSchema>;
+
+export function getRealtimeTurnEnv(): RealtimeTurnEnv | null {
+  const parsed = realtimeTurnSchema.safeParse({
+    CLOUDFLARE_REALTIME_TURN_TOKEN_ID: process.env.CLOUDFLARE_REALTIME_TURN_TOKEN_ID,
+    CLOUDFLARE_REALTIME_TURN_API_TOKEN: process.env.CLOUDFLARE_REALTIME_TURN_API_TOKEN,
+  });
+  if (!parsed.success) return null;
+  return parsed.data;
+}
+
+/**
  * Relayer env — separate schema because these vars are only required by the
  * `register-relayed` route, not by any server-rendered page. Pages that never
  * touch the relayer must continue to render when the key is absent.

@@ -38,19 +38,75 @@ export interface WhipOptions {
    */
   sign?: (message: string) => Promise<string>;
   /**
-   * Cap for the video encoder's max bitrate in bits/sec (passed to
-   * `RTCRtpSender.setParameters()`). Limiting the ceiling smooths
-   * Chrome's bandwidth-adaptation ramp — without a cap the encoder
-   * swings resolution aggressively during the first ~10s of a
-   * session, forcing SPS changes our CMAF segmenter has to cope with.
-   * Default 1.5 Mbps — enough for 720p30 Constrained Baseline. Pass 0
-   * to opt out.
+   * Cap for the video encoder's max bitrate in bits/sec, applied ONLY when
+   * the simulcast path is unavailable (browser rejects sendEncodings). With
+   * simulcast active the per-layer `maxBitrate` in `simulcastLayers` is the
+   * real ceiling. Default 1.5 Mbps. Pass 0 to opt out of the legacy cap.
    */
   maxVideoBitrate?: number;
+  /**
+   * Simulcast layers to publish. The browser sends one RTP stream per layer
+   * at the specified resolution scale + max bitrate, the Cloudflare SFU
+   * consumes them all, and each viewer gets the layer matching their network.
+   *
+   * When omitted, defaults via `defaultSimulcastLayers()` — desktop UAs get
+   * 3 layers (q/h/f up to 2 Mbps), mobile UAs get 2 layers (q/h up to 800 Kbps)
+   * to fit cellular uplink budgets. Pass `[]` to disable simulcast and fall
+   * back to the legacy single-encoding + `maxVideoBitrate` cap path.
+   */
+  simulcastLayers?: SimulcastLayer[];
 }
 
 /** Default cap applied when `WhipOptions.maxVideoBitrate` is unset. */
 export const DEFAULT_MAX_VIDEO_BITRATE = 1_500_000;
+
+/**
+ * Simulcast layer profile. Each entry becomes one `RTCRtpEncodingParameters`
+ * passed to `addTransceiver({ sendEncodings })`. The browser publishes one
+ * RTP stream per layer at the chosen resolution scale + max bitrate, the
+ * Cloudflare Realtime SFU consumes all of them, and each subscriber gets
+ * the layer matching its bandwidth — automatically downgraded when the
+ * link degrades, automatically upgraded when it recovers.
+ *
+ * `rid` follows the convention shipping in the wider WHIP/WebRTC ecosystem:
+ *   q (quarter) — lowest, ~4× smaller resolution
+ *   h (half)    — middle, ~2× smaller resolution
+ *   f (full)    — top, native capture resolution
+ */
+export interface SimulcastLayer {
+  rid: 'q' | 'h' | 'f';
+  maxBitrate: number;
+  scaleResolutionDownBy: number;
+}
+
+const DESKTOP_LAYERS: SimulcastLayer[] = [
+  { rid: 'q', maxBitrate: 300_000, scaleResolutionDownBy: 4 }, // ~360p
+  { rid: 'h', maxBitrate: 800_000, scaleResolutionDownBy: 2 }, // ~720p
+  { rid: 'f', maxBitrate: 2_000_000, scaleResolutionDownBy: 1 }, // ~1080p
+];
+
+const MOBILE_LAYERS: SimulcastLayer[] = [
+  { rid: 'q', maxBitrate: 200_000, scaleResolutionDownBy: 4 }, // ~360p
+  { rid: 'h', maxBitrate: 600_000, scaleResolutionDownBy: 2 }, // ~720p
+  // No `f` on mobile — uplink budget on 4G/5G can't afford the 2 Mbps top
+  // layer reliably. Viewers still get adaptive playback between the two.
+];
+
+/**
+ * Pick simulcast layers based on the publisher's user agent. Mobile browsers
+ * get a 2-layer profile capped at ~800 Kbps total to fit Vivo/Claro/Tim 4G
+ * uplinks; desktop browsers get the full 3-layer profile up to ~2 Mbps. The
+ * publisher's bandwidth is the bottleneck for simulcast — the SFU can only
+ * forward layers it actually receives.
+ *
+ * Override via `WhipOptions.simulcastLayers` when the caller has a more
+ * specific signal (e.g., a network-quality preview before going live).
+ */
+export function defaultSimulcastLayers(): SimulcastLayer[] {
+  if (typeof navigator === 'undefined') return DESKTOP_LAYERS;
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return isMobile ? MOBILE_LAYERS : DESKTOP_LAYERS;
+}
 
 export async function publishWhip(opts: WhipOptions): Promise<WhipSession> {
   const pc = new RTCPeerConnection({
@@ -64,17 +120,43 @@ export async function publishWhip(opts: WhipOptions): Promise<WhipSession> {
     });
   }
 
-  const capBitrate = opts.maxVideoBitrate ?? DEFAULT_MAX_VIDEO_BITRATE;
+  const layers = opts.simulcastLayers ?? defaultSimulcastLayers();
+  const fallbackCap = opts.maxVideoBitrate ?? DEFAULT_MAX_VIDEO_BITRATE;
+
   for (const track of opts.stream.getTracks()) {
+    if (track.kind === 'video' && layers.length > 0) {
+      // Simulcast path: publish multiple resolutions in parallel so the SFU
+      // can layer-switch per subscriber. Browsers that don't support the
+      // sendEncodings option silently drop the extra layers and behave like
+      // single-layer publishers — the catch below is the safety net.
+      try {
+        pc.addTransceiver(track, {
+          direction: 'sendonly',
+          streams: [opts.stream],
+          sendEncodings: layers.map((l) => ({
+            rid: l.rid,
+            maxBitrate: l.maxBitrate,
+            scaleResolutionDownBy: l.scaleResolutionDownBy,
+          })),
+        });
+        continue;
+      } catch (err) {
+        // Older browsers (or strict typings on edge runtimes) reject
+        // sendEncodings on the init dictionary. Fall through to the
+        // legacy single-encoding setup — viewer still gets a stream.
+        console.warn('[whip] simulcast init rejected, falling back to single layer', err);
+      }
+    }
+
     const transceiver = pc.addTransceiver(track, {
       direction: 'sendonly',
       streams: [opts.stream],
     });
-    if (capBitrate > 0 && track.kind === 'video') {
+    if (fallbackCap > 0 && track.kind === 'video') {
       try {
         const params = transceiver.sender.getParameters();
         const encodings = params.encodings && params.encodings.length > 0 ? params.encodings : [{}];
-        encodings[0] = { ...encodings[0], maxBitrate: capBitrate };
+        encodings[0] = { ...encodings[0], maxBitrate: fallbackCap };
         params.encodings = encodings;
         await transceiver.sender.setParameters(params);
       } catch {
