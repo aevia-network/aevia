@@ -2,6 +2,7 @@
 
 import { BottomNav } from '@/components/bottom-nav';
 import { explorerTxUrl } from '@/lib/chain';
+import { fetchIceServers } from '@/lib/webrtc/ice';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
 import { PermanenceStrip, PresenceRow, ReactionStrip, VigilChip } from '@aevia/ui';
 import Hls from 'hls.js';
@@ -104,8 +105,16 @@ export function PlayerScreen(props: PlayerScreenProps) {
         typeof window !== 'undefined' &&
         new URLSearchParams(window.location.search).get('debug') === '1';
 
+      // Fetch dynamic ICE servers (STUN + Cloudflare TURN credentials when
+      // configured server-side). Without TURN, viewers on hostile mobile
+      // networks (Vivo 4G CGNAT, corporate firewalls blocking UDP) silently
+      // fail the WebRTC handshake. The TURN relay over TCP/443 routes
+      // around both. `fetchIceServers` never throws — falls back to the
+      // static STUN list on any failure.
+      const iceServers = await fetchIceServers();
       const session = await playWhep({
         whepUrl: effectiveWhepUrl,
+        iceServers,
         debugLog,
         onConnectionStateChange: (s) => {
           if (s === 'connected') setLiveStatus('playing');

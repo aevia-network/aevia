@@ -2,6 +2,7 @@
 
 import { BottomNav } from '@/components/bottom-nav';
 import { useUploads } from '@/components/upload-context';
+import { fetchIceServers } from '@/lib/webrtc/ice';
 import { type RecorderSession, startRecorder } from '@/lib/webrtc/recorder';
 import { type WhipSession, publishWhip } from '@/lib/webrtc/whip';
 import { PermanenceStrip } from '@aevia/ui';
@@ -141,9 +142,18 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
       // Access-Control-Allow-Headers in preflight response"). Send them only
       // when we're publishing to the aevia-mesh.
       const isAeviaMesh = apiLive.backend === 'aevia-mesh';
+      // Fetch dynamic ICE servers (STUN + Cloudflare TURN credentials when
+      // configured server-side). TURN relay over TCP/443 is what unblocks
+      // CGNAT-heavy mobile networks like Vivo 4G — direct UDP candidates
+      // routinely fail there and the publisher silently times out without
+      // a relay fallback. `fetchIceServers` never throws; on failure it
+      // returns the static STUN list so we keep the original best-effort
+      // path.
+      const iceServers = await fetchIceServers();
       const session = await publishWhip({
         whipUrl: apiLive.whipUrl,
         stream: streamRef.current,
+        iceServers,
         did: isAeviaMesh ? apiLive.creatorDid : undefined,
         onConnectionStateChange: (s) => {
           // WebRTC RTCPeerConnection state machine:
