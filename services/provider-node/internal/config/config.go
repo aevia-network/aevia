@@ -29,7 +29,13 @@ type Config struct {
 	DataDir        string
 	Listen         string // libp2p multiaddr, for example /ip4/0.0.0.0/tcp/4001
 	HTTPAddr       string // plain HTTP listen address, used by Provider Público mode
-	BootstrapPeers string // comma-separated /p2p-terminated multiaddrs
+	BootstrapPeers string // comma-separated /p2p-terminated multiaddrs for DHT bootstrap
+	RelayPeers     string // comma-separated /p2p-terminated multiaddrs for AutoRelay static relays
+	// ForceReachability overrides AutoNAT detection. Empty, "public", or
+	// "private". Public is for Relay Nodes on VPS that auto-detection
+	// sometimes misclassifies; "private" is for NAT Provider Nodes that
+	// want to skip the probing phase.
+	ForceReachability string
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -63,6 +69,8 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.Listen, "listen", cfg.Listen, "libp2p multiaddr to listen on")
 	fs.StringVar(&cfg.HTTPAddr, "http-addr", cfg.HTTPAddr, "plain HTTP listen address for Provider Público path")
 	fs.StringVar(&cfg.BootstrapPeers, "bootstrap", cfg.BootstrapPeers, "comma-separated /p2p-terminated multiaddrs to bootstrap the DHT from")
+	fs.StringVar(&cfg.RelayPeers, "relay-peers", cfg.RelayPeers, "comma-separated /p2p-terminated multiaddrs of Circuit Relay v2 nodes to reserve slots on (for NAT Provider Nodes)")
+	fs.StringVar(&cfg.ForceReachability, "force-reachability", cfg.ForceReachability, "override AutoNAT reachability: \"public\", \"private\", or empty")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -101,6 +109,12 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_BOOTSTRAP"); v != "" {
 		cfg.BootstrapPeers = v
+	}
+	if v := os.Getenv("AEVIA_RELAY_PEERS"); v != "" {
+		cfg.RelayPeers = v
+	}
+	if v := os.Getenv("AEVIA_FORCE_REACHABILITY"); v != "" {
+		cfg.ForceReachability = v
 	}
 }
 
