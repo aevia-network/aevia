@@ -134,7 +134,7 @@ function RankingSection({
       </h1>
       <RankingSwitcher value={template} onChange={onTemplateChange} />
       <p className="font-label text-xs text-on-surface/60 lowercase">
-        curadoria para a família · troque quando quiser
+        curadoria editorial · troque o template quando quiser
       </p>
     </section>
   );
@@ -206,11 +206,11 @@ function CuratorialCard() {
         id="editorial-heading"
         className="mt-2 font-headline font-semibold text-[22px] text-on-surface leading-tight lowercase"
       >
-        criadores de fé que permaneceram no ar em 2025
+        criadores que permaneceram no ar em 2025
       </h2>
       <p className="mt-2 font-body text-on-surface/70 text-sm">
         uma seleção editorial que o algoritmo não substitui. sete canais escolhidos pela
-        persistência do evangelho e pela dignidade da voz.
+        persistência editorial e pela dignidade da voz.
       </p>
       <Link
         href="/discover"
@@ -246,13 +246,13 @@ interface FeedPost {
 const MOCK_POSTS: FeedPost[] = [
   {
     id: 'mock-1',
-    creatorName: 'portas abertas',
+    creatorName: 'agência paulista',
     creatorHref: '/discover',
-    avatarInitials: 'PA',
+    avatarInitials: 'AP',
     timestamp: 'há 14 min',
-    title: 'relato da coreia do norte: a igreja que canta em silêncio',
+    title: 'câmara de são paulo · sessão extraordinária sobre orçamento 2026',
     excerpt:
-      'testemunho gravado por voluntários em rota segura. permanência garantida pelos peers do ministério.',
+      'cobertura ao vivo do plenário. transmissão ancorada em base l2; replay disponível mesmo se a câmara remover o stream oficial.',
     durationOrState: 'ao vivo · 18 min',
     viewsLabel: '2.341 visualizações',
     peersLabel: '47 peers compartilhando',
@@ -260,14 +260,14 @@ const MOCK_POSTS: FeedPost[] = [
   },
   {
     id: 'mock-2',
-    creatorName: 'the gospel coalition br',
+    creatorName: 'biblioteca aberta',
     creatorHref: '/discover',
-    avatarInitials: 'TGC',
+    avatarInitials: 'BA',
     timestamp: 'há 2 h',
-    title: 'c.s. lewis sobre sofrimento · leitura dirigida',
+    title: 'matemática 9º ano · sistemas de equações em 12 minutos',
     excerpt:
-      'ensaio curto sobre o problema da dor. formato de áudio-texto; ideal para ouvir enquanto caminha.',
-    durationOrState: '3 min · vod',
+      'aula direta da biblioteca pública de campinas. parte de uma série; persistente independente de mudanças de plataforma na escola.',
+    durationOrState: '12 min · vod',
     viewsLabel: '18 mil visualizações',
     peersLabel: '112 peers',
     reactionCounts: { amem: 420, boost: 52 },
@@ -368,9 +368,9 @@ function FeedPostCard({ post }: { post: FeedPost }) {
 // ---- Creators grid (mock, honest) ----------------------------------------
 
 const MOCK_CREATORS = [
-  { id: 'c1', name: 'amir farahan', region: 'teerã · rota segura' },
-  { id: 'c2', name: 'grace okoye', region: 'lagos · missões' },
-  { id: 'c3', name: 'thiago pires', region: 'são paulo · teologia' },
+  { id: 'c1', name: 'antônia mendes', region: 'jornalismo · campinas' },
+  { id: 'c2', name: 'marcelo rocha', region: 'aulas · 9º ano' },
+  { id: 'c3', name: 'iara veloso', region: 'documentário · rural' },
 ];
 
 function CreatorsGrid() {
@@ -381,7 +381,7 @@ function CreatorsGrid() {
           id="creators-heading"
           className="font-headline font-semibold text-xl text-on-surface lowercase"
         >
-          criadores de fé
+          criadores em destaque
         </h2>
         <span className="font-label text-[10px] text-on-surface/50 uppercase tracking-[0.15em]">
           amostra · sprint 3

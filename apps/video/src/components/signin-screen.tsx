@@ -92,9 +92,11 @@ export function SignInScreen({ next }: { next?: string }) {
 
       <div className="mt-4 px-8 text-center">
         <p className="font-body text-[18px] text-on-surface leading-snug">
-          vídeo soberano para criadores silenciados.
+          vídeo soberano pra quem cria.
           <br />
-          <span className="opacity-60">persistente, assinado, independente.</span>
+          <span className="opacity-60">
+            seu canal continua seu, mesmo quando a plataforma muda.
+          </span>
         </p>
       </div>
 

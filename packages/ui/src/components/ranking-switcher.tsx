@@ -5,10 +5,13 @@ import { cn } from '../lib/cn';
 /**
  * RankingSwitcher — three-pill radiogroup for the feed ranking template.
  *
- * Per sprint-0 decision D8, the platform ships three ranking templates:
- * - `familia` — family-safe, highest R_values threshold.
- * - `padrao` — default balance.
- * - `ministerio` — ministry/theology-focused weighting.
+ * Three ranking templates ship by default (the underlying R(c) weights are
+ * identical; what changes is the surface emphasis):
+ * - `comunidade` — family-/community-safe weighting, highest R_values
+ *   threshold; suitable for shared screens and classroom contexts.
+ * - `padrao` — default balance across editorial dimensions.
+ * - `foco` — narrow-topic weighting; viewer follows a chosen domain
+ *   (theology, journalism, education, etc.) without cross-feed dilution.
  *
  * This component is strictly controlled — the consumer owns `value`.
  *
@@ -20,7 +23,7 @@ import { cn } from '../lib/cn';
  * ```
  */
 
-export type RankingTemplate = 'familia' | 'padrao' | 'ministerio';
+export type RankingTemplate = 'comunidade' | 'padrao' | 'foco';
 
 export interface RankingSwitcherProps {
   value: RankingTemplate;
@@ -30,9 +33,9 @@ export interface RankingSwitcherProps {
 }
 
 const OPTIONS: readonly { kind: RankingTemplate; label: string }[] = [
-  { kind: 'familia', label: 'família' },
+  { kind: 'comunidade', label: 'comunidade' },
   { kind: 'padrao', label: 'padrão' },
-  { kind: 'ministerio', label: 'ministério' },
+  { kind: 'foco', label: 'foco' },
 ];
 
 export function RankingSwitcher({
