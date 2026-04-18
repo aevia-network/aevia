@@ -12,9 +12,9 @@ import (
 // LiveRouter attaches live-session-scoped HTTP routes to the content
 // surface:
 //
-//   GET /live/{sessionID}/playlist.m3u8   — HLS media playlist (live)
-//   GET /live/{sessionID}/init.mp4         — fMP4 init segment
-//   GET /live/{sessionID}/segment/{n}.mp4  — fMP4 media segment
+//	GET /live/{sessionID}/playlist.m3u8   — HLS media playlist (live)
+//	GET /live/{sessionID}/init.mp4         — fMP4 init segment
+//	GET /live/{sessionID}/segment/{n}.mp4  — fMP4 media segment
 //
 // M8 ships classic HLS (not LL-HLS EXT-X-PART) — hls.js plays it with
 // ~10s latency. LL-HLS partial segments land in M8.5 for sub-3s.
@@ -71,6 +71,7 @@ func (r *LiveRouter) Register(reg HandlerRegistrar) {
 	reg.HandleFunc("GET /live/{sessionID}/playlist.m3u8", r.servePlaylist)
 	reg.HandleFunc("GET /live/{sessionID}/init.mp4", r.serveInit)
 	reg.HandleFunc("GET /live/{sessionID}/segment/{n}", r.serveSegment)
+	reg.HandleFunc("GET /live/{sessionID}/manifest.json", r.serveManifest)
 }
 
 func (r *LiveRouter) sink(id string) (*LivePinSink, bool) {
@@ -107,8 +108,14 @@ func (r *LiveRouter) servePlaylist(w http.ResponseWriter, req *http.Request) {
 		b.WriteString(fmt.Sprintf("#EXTINF:%d.000,\n", TargetSegmentDuration))
 		b.WriteString(fmt.Sprintf("/live/%s/segment/%d\n", id, i))
 	}
-	// M8 omits #EXT-X-ENDLIST while session is open — hls.js keeps
-	// polling for new segments. Post-finalize M9 hook will append it.
+	// Append EXT-X-ENDLIST when the session has finalised so hls.js
+	// stops polling and treats the playlist as VOD. Finalised means
+	// LivePinSink.Finalize() has pinned the final manifest — the
+	// server can still answer subsequent GETs indefinitely from the
+	// cached segments.
+	if sink.Manifest() != nil {
+		b.WriteString("#EXT-X-ENDLIST\n")
+	}
 
 	body := b.String()
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -133,6 +140,40 @@ func (r *LiveRouter) serveInit(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("Content-Length", strconv.Itoa(len(init)))
 	_, _ = w.Write(init)
+}
+
+// serveManifest emits the session's VOD manifest once Finalize has
+// been called. Viewers arriving after the live session has closed
+// fetch this to reconstruct a seekable HLS playlist locally — and to
+// verify the Merkle root against the on-chain ContentRegistry anchor
+// if they want end-to-end cryptographic assurance.
+func (r *LiveRouter) serveManifest(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("sessionID")
+	sink, ok := r.sink(id)
+	if !ok {
+		http.Error(w, "live: unknown session", http.StatusNotFound)
+		return
+	}
+	m := sink.Manifest()
+	if m == nil {
+		http.Error(w, "live: session still in progress", http.StatusNotFound)
+		return
+	}
+	startedAt, endedAt := sink.Timestamps()
+	vod, err := BuildVODManifest(id, m, startedAt, endedAt)
+	if err != nil {
+		http.Error(w, "live: build manifest: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	body, err := vod.CanonicalJSON()
+	if err != nil {
+		http.Error(w, "live: encode manifest: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	_, _ = w.Write(body)
 }
 
 func (r *LiveRouter) serveSegment(w http.ResponseWriter, req *http.Request) {

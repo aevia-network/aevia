@@ -5,18 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/manifest"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
 )
 
 // LivePinSink implements SegmentSink by:
-//   1. Appending each media segment's SHA-256 to a growing Merkle leaf
-//      set (live manifest).
-//   2. Persisting init + media segments in pinning.ContentStore under
-//      a stable session CID so hls.js + p2p-media-loader can fetch.
-//   3. Exposing the current live manifest for external consumers (the
-//      HLS playlist generator + the DHT re-announce goroutine).
+//  1. Appending each media segment's SHA-256 to a growing Merkle leaf
+//     set (live manifest).
+//  2. Persisting init + media segments in pinning.ContentStore under
+//     a stable session CID so hls.js + p2p-media-loader can fetch.
+//  3. Exposing the current live manifest for external consumers (the
+//     HLS playlist generator + the DHT re-announce goroutine).
 //
 // On Close(), emits a final Merkle root that gets anchored on-chain
 // post-session via ContentRegistry.registerContent.
@@ -24,10 +25,13 @@ type LivePinSink struct {
 	store     *pinning.ContentStore
 	sessionID string
 
-	mu       sync.Mutex
-	leaves   [][]byte
-	initSeg  []byte
-	segments [][]byte // parallel to leaves; segments[i].hash == leaves[i]
+	mu        sync.Mutex
+	leaves    [][]byte
+	initSeg   []byte
+	segments  [][]byte // parallel to leaves; segments[i].hash == leaves[i]
+	finalized *manifest.Manifest
+	startedAt time.Time
+	endedAt   time.Time
 }
 
 // NewLivePinSink binds a session ID to a ContentStore. The session ID
@@ -41,7 +45,7 @@ func NewLivePinSink(store *pinning.ContentStore, sessionID string) (*LivePinSink
 	if sessionID == "" {
 		return nil, errors.New("livepin: sessionID is empty")
 	}
-	return &LivePinSink{store: store, sessionID: sessionID}, nil
+	return &LivePinSink{store: store, sessionID: sessionID, startedAt: time.Now().UTC()}, nil
 }
 
 // OnInitSegment stores the fMP4 init segment. Called once per session.
@@ -109,11 +113,15 @@ func (l *LivePinSink) Snapshot() (*LiveSnapshot, error) {
 // Finalize commits the live session to the ContentStore under a
 // stable CID (derived from the final Merkle root) so VOD playback
 // flows continue to work after the stream ends. Called exactly once
-// via CMAFSegmenter.Close()'s trailing flush.
+// via CMAFSegmenter.Close()'s trailing flush. Idempotent — a second
+// call returns the cached manifest instead of re-pinning.
 func (l *LivePinSink) Finalize(segmentDurationSecs int) (*manifest.Manifest, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if l.finalized != nil {
+		return l.finalized, nil
+	}
 	if len(l.segments) == 0 {
 		return nil, errors.New("livepin: cannot finalize zero-segment session")
 	}
@@ -124,7 +132,25 @@ func (l *LivePinSink) Finalize(segmentDurationSecs int) (*manifest.Manifest, err
 	if err != nil {
 		return nil, fmt.Errorf("livepin: pin: %w", err)
 	}
+	l.finalized = m
+	l.endedAt = time.Now().UTC()
 	return m, nil
+}
+
+// Manifest returns the finalized manifest when the session has closed,
+// or nil when the live is still open. Safe for concurrent read.
+func (l *LivePinSink) Manifest() *manifest.Manifest {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.finalized
+}
+
+// Timestamps returns (startedAt, endedAt). endedAt is zero time when
+// the session is still live. Both returned in UTC.
+func (l *LivePinSink) Timestamps() (time.Time, time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.startedAt, l.endedAt
 }
 
 // LiveSnapshot is the view the HLS playlist generator consumes.
