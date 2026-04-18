@@ -57,11 +57,19 @@ const MirrorProtocol protocol.ID = "/aevia/mirror/rtp/1.0.0"
 type FrameType uint8
 
 const (
-	FrameTypeHeader   FrameType = 0x01
-	FrameTypeVideoRTP FrameType = 0x02
-	FrameTypeAudioRTP FrameType = 0x03
-	FrameTypeClose    FrameType = 0x04
+	FrameTypeHeader    FrameType = 0x01
+	FrameTypeVideoRTP  FrameType = 0x02
+	FrameTypeAudioRTP  FrameType = 0x03
+	FrameTypeClose     FrameType = 0x04
+	FrameTypeProbe     FrameType = 0x05 // Fase 2.2 — origin → mirror probe
+	FrameTypeProbeEcho FrameType = 0x06 // Fase 2.2 — mirror → origin echo
 )
+
+// ProbeBodyBytes is the fixed wire size of a probe or echo body:
+// 8 bytes probe_id + 8 bytes advisory ns. Advisory because we use
+// echo-back round-trip, not wall-clock subtraction — the origin's
+// outstanding map keyed by probe_id is the authoritative timing source.
+const ProbeBodyBytes = 16
 
 // MaxFrameBytes guards against memory blow-up on a malicious or buggy
 // peer. RTP packets are <1500 bytes; the JSON header is a few hundred
@@ -182,6 +190,101 @@ func WriteCloseFrame(w io.Writer) error {
 	return writeFrame(w, FrameTypeClose, nil, nil)
 }
 
+// ProbeFrame is the Fase 2.2 echo-back round-trip payload. Origin
+// writes a probe; mirror echoes the same ProbeID back over the same
+// libp2p stream; origin matches the id in its outstanding map and
+// computes rtt = now - send_time. Clock-independent — no wall-clock
+// subtraction across hosts, which resolves the NTP-drift issue of
+// Fase 2.1 wall-clock hop metric.
+//
+// SendNS is advisory — useful for diagnostic logs only. The origin's
+// authoritative timing comes from its outstanding map keyed by ProbeID.
+type ProbeFrame struct {
+	ProbeID uint64
+	SendNS  uint64
+}
+
+// WriteProbe sends a probe frame (originator side).
+func WriteProbe(w io.Writer, p ProbeFrame) error {
+	body := marshalProbeBody(p)
+	return writeFrame(w, FrameTypeProbe, nil, body)
+}
+
+// WriteProbeEcho sends an echo frame (mirror side). The mirror MUST
+// pass the parsed probe through unchanged so the origin can match it
+// by ProbeID.
+func WriteProbeEcho(w io.Writer, p ProbeFrame) error {
+	body := marshalProbeBody(p)
+	return writeFrame(w, FrameTypeProbeEcho, nil, body)
+}
+
+// ParseProbeBody decodes a probe/echo body into a ProbeFrame.
+func ParseProbeBody(body []byte) (ProbeFrame, error) {
+	if len(body) != ProbeBodyBytes {
+		return ProbeFrame{}, fmt.Errorf("mirror: probe body wants %d bytes, got %d", ProbeBodyBytes, len(body))
+	}
+	return ProbeFrame{
+		ProbeID: binary.BigEndian.Uint64(body[0:8]),
+		SendNS:  binary.BigEndian.Uint64(body[8:16]),
+	}, nil
+}
+
+func marshalProbeBody(p ProbeFrame) []byte {
+	buf := make([]byte, ProbeBodyBytes)
+	binary.BigEndian.PutUint64(buf[0:8], p.ProbeID)
+	binary.BigEndian.PutUint64(buf[8:16], p.SendNS)
+	return buf
+}
+
+// Frame is the tagged-union result of ReadAnyFrame. Exactly one of
+// RTP or Probe is non-nil. Close and EOF signals flow via
+// (FrameTypeClose, nil, nil, io.EOF) so callers can bail on err.
+type Frame struct {
+	Type  FrameType
+	RTP   *RTPFrame
+	Probe *ProbeFrame
+}
+
+// ReadAnyFrame is the Fase 2.2 superset of ReadFrame — handles RTP,
+// Probe, and Echo frames. Returns io.EOF on close frame or stream
+// end. Unknown frame types produce an error but do NOT EOF, letting
+// the caller decide whether to reset the stream.
+//
+// ReadFrame is retained as an alias returning only RTP — the Fase 2.1
+// code path keeps working for tests written against the old API.
+func ReadAnyFrame(r io.Reader) (Frame, error) {
+	ft, prefix, body, err := readFrame(r)
+	if err != nil {
+		return Frame{}, err
+	}
+	switch ft {
+	case FrameTypeVideoRTP, FrameTypeAudioRTP:
+		if len(prefix) != 8 {
+			return Frame{Type: ft}, fmt.Errorf("mirror: RTP frame missing 8-byte origin_ns prefix (got %d)", len(prefix))
+		}
+		return Frame{
+			Type: ft,
+			RTP: &RTPFrame{
+				Kind:     ft,
+				OriginNS: int64(binary.BigEndian.Uint64(prefix)),
+				RTP:      body,
+			},
+		}, nil
+	case FrameTypeProbe, FrameTypeProbeEcho:
+		p, err := ParseProbeBody(body)
+		if err != nil {
+			return Frame{Type: ft}, err
+		}
+		return Frame{Type: ft, Probe: &p}, nil
+	case FrameTypeClose:
+		return Frame{Type: FrameTypeClose}, io.EOF
+	case FrameTypeHeader:
+		return Frame{Type: FrameTypeHeader}, fmt.Errorf("mirror: unexpected repeated header frame")
+	default:
+		return Frame{Type: ft}, fmt.Errorf("mirror: unknown frame type 0x%02x", ft)
+	}
+}
+
 // writeFrame is the low-level frame writer. prefix is an optional
 // additional header between FrameType+Len and body — used by RTP
 // frames for the 8-byte origin_ns.
@@ -223,8 +326,8 @@ func readFrame(r io.Reader) (ft FrameType, prefix, body []byte, err error) {
 		if _, err := io.ReadFull(r, prefix); err != nil {
 			return ft, nil, nil, fmt.Errorf("mirror: read origin_ns: %w", err)
 		}
-	case FrameTypeHeader, FrameTypeClose:
-		// no prefix
+	case FrameTypeHeader, FrameTypeClose, FrameTypeProbe, FrameTypeProbeEcho:
+		// no prefix — body carries all state
 	default:
 		return ft, nil, nil, fmt.Errorf("mirror: unknown frame type 0x%02x", ft)
 	}

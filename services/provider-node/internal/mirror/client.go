@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
@@ -37,6 +39,14 @@ type Client struct {
 	peers   []peer.ID
 	log     *slog.Logger
 	sendBuf int // per-sink channel buffer — number of in-flight RTP packets before backpressure drops
+
+	// peerMetrics tracks hop latency per downstream peer across every
+	// session the origin mirrors. Keyed by peer.ID; values persist
+	// across session lifecycles so the Fase 2.2 candidate ranker has
+	// stable history when re-selecting mirrors on the next WHIP session.
+	peerMu       sync.Mutex
+	peerMetrics  map[peer.ID]*HopMetrics
+	nextProbeID  atomic.Uint64
 }
 
 // ClientOptions configures NewClient.
@@ -62,7 +72,40 @@ func NewClient(h host.Host, peers []peer.ID, logger *slog.Logger, opts ClientOpt
 	if sendBuf <= 0 {
 		sendBuf = 1024
 	}
-	return &Client{host: h, peers: peers, log: logger, sendBuf: sendBuf}, nil
+	return &Client{
+		host:        h,
+		peers:       peers,
+		log:         logger,
+		sendBuf:     sendBuf,
+		peerMetrics: make(map[peer.ID]*HopMetrics),
+	}, nil
+}
+
+// PeerMetrics returns the HopMetrics for a given peer, creating one
+// lazily on first access. Safe for concurrent callers. The returned
+// pointer is stable across the Client's lifetime.
+func (c *Client) PeerMetrics(p peer.ID) *HopMetrics {
+	c.peerMu.Lock()
+	defer c.peerMu.Unlock()
+	m, ok := c.peerMetrics[p]
+	if !ok {
+		m = NewHopMetrics()
+		c.peerMetrics[p] = m
+	}
+	return m
+}
+
+// PeerMetricsSnapshot returns a copy of the current peer→metrics map
+// for callers that want to log or serve the whole set (e.g. candidate
+// ranking, /mirrors/candidates endpoint in Fase 2.2b).
+func (c *Client) PeerMetricsSnapshot() map[peer.ID]*HopMetrics {
+	c.peerMu.Lock()
+	defer c.peerMu.Unlock()
+	out := make(map[peer.ID]*HopMetrics, len(c.peerMetrics))
+	for k, v := range c.peerMetrics {
+		out[k] = v
+	}
+	return out
 }
 
 // MirrorPeers returns a snapshot of configured downstream peers.
@@ -126,10 +169,12 @@ func (c *Client) StartMirroring(ctx context.Context, sess *whip.Session, videoCo
 		// Start the forward goroutine with a per-stream channel that
 		// owns writes. Multiple streams get multiple channels + gos;
 		// keeps wire ordering intact per peer while isolating stalls.
-		sink := newStreamSink(stream, c.log.With("peer_id", p.String(), "session_id", sess.ID), c.sendBuf)
+		peerMetrics := c.PeerMetrics(p)
+		sink := newStreamSink(stream, c.log.With("peer_id", p.String(), "session_id", sess.ID), c.sendBuf, peerMetrics, &c.nextProbeID)
 		sess.AttachVideoSink(sink.video)
 		sess.AttachAudioSink(sink.audio)
 		go sink.run(ctx, sess)
+		go sink.readEchoes(ctx, sess)
 
 		c.log.Info("mirror stream started",
 			"peer_id", p.String(),
@@ -145,6 +190,14 @@ func (c *Client) StartMirroring(ctx context.Context, sess *whip.Session, videoCo
 // writes to the libp2p stream. Serialising through one channel per
 // stream keeps wire order consistent and avoids concurrent writes to
 // the stream (libp2p streams are not safe for concurrent writers).
+//
+// Fase 2.2 additions:
+//   - metrics: per-peer HopMetrics accumulator for RTT + loss.
+//   - probeIDCounter: shared across streams on the same Client so probe
+//     IDs are globally unique (useful for cross-stream diagnostics).
+//   - outstanding: probe_id → send_time_ns map with mutex. Populated
+//     by the writer goroutine when a probe is sent, consumed + cleared
+//     by the reader goroutine when an echo arrives.
 type streamSink struct {
 	stream network.Stream
 	log    *slog.Logger
@@ -154,6 +207,12 @@ type streamSink struct {
 
 	video rtpSinkFn
 	audio rtpSinkFn
+
+	metrics        *HopMetrics
+	probeIDCounter *atomic.Uint64
+
+	outstandingMu sync.Mutex
+	outstanding   map[uint64]time.Time
 }
 
 type frameOut struct {
@@ -166,12 +225,21 @@ type rtpSinkFn func(*rtp.Packet) error
 
 func (f rtpSinkFn) WriteRTP(pkt *rtp.Packet) error { return f(pkt) }
 
-func newStreamSink(stream network.Stream, log *slog.Logger, buf int) *streamSink {
+func newStreamSink(
+	stream network.Stream,
+	log *slog.Logger,
+	buf int,
+	metrics *HopMetrics,
+	probeIDCounter *atomic.Uint64,
+) *streamSink {
 	s := &streamSink{
-		stream: stream,
-		log:    log,
-		ch:     make(chan frameOut, buf),
-		closed: make(chan struct{}),
+		stream:         stream,
+		log:            log,
+		ch:             make(chan frameOut, buf),
+		closed:         make(chan struct{}),
+		metrics:        metrics,
+		probeIDCounter: probeIDCounter,
+		outstanding:    make(map[uint64]time.Time),
 	}
 	s.video = func(pkt *rtp.Packet) error { return s.enqueue(FrameTypeVideoRTP, pkt) }
 	s.audio = func(pkt *rtp.Packet) error { return s.enqueue(FrameTypeAudioRTP, pkt) }
@@ -206,6 +274,17 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 	}()
 	dropped := 0
 	lastDropLog := time.Now()
+
+	// Fase 2.2 probe ticker: 1 Hz with ±100ms jitter (spec §4.5). Using
+	// a ticker is enough — we reset it on each fire to get the jitter,
+	// avoiding a rand call on the hot path when it isn't needed.
+	probeTimer := time.NewTimer(probeInterval())
+	defer probeTimer.Stop()
+	// Expiry sweep timer — every 1s we drop outstanding probes older
+	// than 5s and count them as loss (spec §4.6).
+	sweepTicker := time.NewTicker(1 * time.Second)
+	defer sweepTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -229,8 +308,100 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 				dropped = 0
 				lastDropLog = time.Now()
 			}
+		case <-probeTimer.C:
+			if err := s.sendProbe(); err != nil {
+				s.log.Warn("probe write failed", "err", err.Error())
+				return
+			}
+			probeTimer.Reset(probeInterval())
+		case <-sweepTicker.C:
+			s.sweepOutstanding(5 * time.Second)
 		}
 	}
+}
+
+// readEchoes is the sibling goroutine that consumes echo frames from
+// the libp2p stream. It MUST NOT write — the writer goroutine owns
+// the stream's write side. The split is safe because libp2p streams
+// support concurrent read+write on distinct goroutines.
+func (s *streamSink) readEchoes(ctx context.Context, sess *whip.Session) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sess.Done():
+			return
+		case <-s.closed:
+			return
+		default:
+		}
+		frame, err := ReadAnyFrame(s.stream)
+		if err != nil {
+			// EOF on stream close is the expected end; anything else is
+			// logged at debug because the writer side may already be
+			// shutting down when we land here.
+			if !errors.Is(err, io.EOF) {
+				s.log.Debug("read echo frame", "err", err.Error())
+			}
+			return
+		}
+		if frame.Type != FrameTypeProbeEcho || frame.Probe == nil {
+			// Ignore unknown frame types on the read side — the origin
+			// never expects anything but echoes back from a mirror.
+			continue
+		}
+		s.outstandingMu.Lock()
+		sentAt, ok := s.outstanding[frame.Probe.ProbeID]
+		if ok {
+			delete(s.outstanding, frame.Probe.ProbeID)
+		}
+		s.outstandingMu.Unlock()
+		if !ok {
+			// Echo arrived after we already expired it, or for an id we
+			// never sent (shouldn't happen but robust against a buggy
+			// peer that echoes stale ids).
+			continue
+		}
+		rtt := time.Since(sentAt)
+		s.metrics.RecordEcho(rtt)
+	}
+}
+
+func (s *streamSink) sendProbe() error {
+	id := s.probeIDCounter.Add(1)
+	now := time.Now()
+	s.outstandingMu.Lock()
+	s.outstanding[id] = now
+	s.outstandingMu.Unlock()
+	return WriteProbe(s.stream, ProbeFrame{
+		ProbeID: id,
+		SendNS:  uint64(now.UnixNano()),
+	})
+}
+
+func (s *streamSink) sweepOutstanding(maxAge time.Duration) {
+	cutoff := time.Now().Add(-maxAge)
+	var lost uint32
+	s.outstandingMu.Lock()
+	for id, t := range s.outstanding {
+		if t.Before(cutoff) {
+			delete(s.outstanding, id)
+			lost++
+		}
+	}
+	s.outstandingMu.Unlock()
+	for i := uint32(0); i < lost; i++ {
+		s.metrics.IncProbeLoss()
+	}
+}
+
+// probeInterval returns the per-probe wait: 1s ±100ms. Spec §4.5.
+func probeInterval() time.Duration {
+	const base = 1 * time.Second
+	const jitter = 100 * time.Millisecond
+	// rand.Int63n is fine here — this isn't security-sensitive.
+	delta := time.Duration(rand.Int63n(int64(2*jitter))) - jitter
+	return base + delta
 }
 
 // fromRTPCapability converts pion's codec capability to our wire

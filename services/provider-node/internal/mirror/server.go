@@ -126,15 +126,19 @@ func (s *Server) handleStream(stream network.Stream) {
 		log.Info("mirror session closed",
 			"video_pkts", metrics.VideoCount(),
 			"audio_pkts", metrics.AudioCount(),
-			"hop_p50_ns", metrics.P50Nanos(),
-			"hop_p95_ns", metrics.P95Nanos(),
+			"probe_pkts", metrics.ProbeCount(),
+			"hop_p50_walltime_ns", metrics.P50Nanos(),
+			"hop_p95_walltime_ns", metrics.P95Nanos(),
+			"hop_p50_echo_ns", metrics.EchoP50Nanos(),
+			"hop_p95_echo_ns", metrics.EchoP95Nanos(),
+			"hop_echo_ema_ns", metrics.EchoEMA().Nanoseconds(),
 		)
 	}()
 
 	videoHub := sess.VideoHub()
 	audioHub := sess.AudioHub()
 	for {
-		ft, frame, err := ReadFrame(stream)
+		frame, err := ReadAnyFrame(stream)
 		if errors.Is(err, io.EOF) {
 			return
 		}
@@ -142,26 +146,40 @@ func (s *Server) handleStream(stream network.Stream) {
 			log.Warn("read frame", "err", err.Error())
 			return
 		}
-		if frame == nil {
-			continue
-		}
-		pkt := &rtp.Packet{}
-		if err := pkt.Unmarshal(frame.RTP); err != nil {
-			log.Debug("malformed rtp", "err", err.Error())
-			continue
-		}
-		hop := time.Duration(time.Now().UnixNano() - frame.OriginNS)
-		switch ft {
-		case FrameTypeVideoRTP:
-			if videoHub != nil {
-				_ = videoHub.WriteRTP(pkt)
+		switch frame.Type {
+		case FrameTypeVideoRTP, FrameTypeAudioRTP:
+			if frame.RTP == nil {
+				continue
 			}
-			metrics.RecordVideo(hop)
-		case FrameTypeAudioRTP:
-			if audioHub != nil {
-				_ = audioHub.WriteRTP(pkt)
+			pkt := &rtp.Packet{}
+			if err := pkt.Unmarshal(frame.RTP.RTP); err != nil {
+				log.Debug("malformed rtp", "err", err.Error())
+				continue
 			}
-			metrics.RecordAudio(hop)
+			hop := time.Duration(time.Now().UnixNano() - frame.RTP.OriginNS)
+			if frame.Type == FrameTypeVideoRTP {
+				if videoHub != nil {
+					_ = videoHub.WriteRTP(pkt)
+				}
+				metrics.RecordVideo(hop)
+			} else {
+				if audioHub != nil {
+					_ = audioHub.WriteRTP(pkt)
+				}
+				metrics.RecordAudio(hop)
+			}
+		case FrameTypeProbe:
+			// Echo back immediately. Stream writes are already serialised
+			// by the single-writer invariant of libp2p streams, so the
+			// echo simply races ahead of the next RTP write if one is
+			// pending. Spec §4.7.3.
+			if frame.Probe == nil {
+				continue
+			}
+			if err := WriteProbeEcho(stream, *frame.Probe); err != nil {
+				log.Warn("write probe echo", "err", err.Error())
+				return
+			}
 		}
 	}
 }
