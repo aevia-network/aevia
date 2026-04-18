@@ -73,7 +73,32 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           ))}
         </section>
 
-        <section className="grid grid-cols-3 gap-12 py-[120px]">
+        <section className="border-t border-primary-dim/30 py-[120px]">
+          <div className="grid grid-cols-[280px_1fr] gap-16">
+            <div>
+              <span className="font-label text-[13px] tracking-[0.04em] text-tertiary">
+                {landing.personas.heading}
+              </span>
+            </div>
+            <div className="flex flex-col gap-10">
+              <p className="max-w-[68ch] text-lg leading-[1.7] text-on-surface-variant">
+                {landing.personas.lead}
+              </p>
+              <ul className="grid grid-cols-2 gap-x-12 gap-y-6">
+                {landing.personas.items.map((persona) => (
+                  <li key={persona.tag} className="flex flex-col gap-2">
+                    <span className="font-label text-sm tracking-[0.02em] text-accent">
+                      {persona.tag}
+                    </span>
+                    <p className="text-sm leading-[1.6] text-on-surface-variant">{persona.line}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-3 gap-12 border-t border-primary-dim/30 py-[120px]">
           {landing.roadmap.map((column) => (
             <div key={column.label} className="flex flex-col gap-4">
               <span className="font-label text-[13px] tracking-[0.04em] text-tertiary">

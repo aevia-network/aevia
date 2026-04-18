@@ -29,7 +29,45 @@ export const ptBR = {
     hero: {
       titleBefore: 'persistência não implica distribuição',
       subtitle:
-        'vídeo soberano para criadores silenciados. o protocolo aevia ancora manifestos em base l2 e paga nós de persistência em cUSDC para manter cópias disponíveis quando cdns comerciais falham.',
+        'vídeo soberano pra todo mundo que cria — gamers, jornalistas locais, educadores, documentaristas, ministérios, makers, pequenas comunidades. o protocolo aevia ancora manifestos em base l2 e paga nós de persistência em cUSDC pra manter cópias disponíveis quando cdns comerciais falham.',
+    },
+    personas: {
+      heading: 'pra quem é isso',
+      lead: 'aevia é pra quem cria e quer persistir. a aup exclui o que comunidades saudáveis já excluem (csam, ncii, apologia de violência). o resto do mundo criador cabe aqui.',
+      items: [
+        {
+          tag: 'gamer',
+          line: 'streams, playthroughs, tutoriais, clipes. seu canal continua seu, não do algoritmo.',
+        },
+        {
+          tag: 'jornalista local',
+          line: 'cobertura de cidade, conselho municipal, desastre climático. sem dependência de cdn comercial que muda regra da noite pro dia.',
+        },
+        {
+          tag: 'educador',
+          line: 'aulas, palestras, cursos. sua biblioteca persiste mesmo quando a plataforma muda política.',
+        },
+        {
+          tag: 'documentarista',
+          line: 'longa duração, séries, investigações. moderação editorial pública, não opaca.',
+        },
+        {
+          tag: 'maker / artesão',
+          line: 'tutoriais, workshops, produtos. audiência portável por cid, não por handle.',
+        },
+        {
+          tag: 'músico indie',
+          line: 'seu catálogo, suas regras. demonetização arbitrária não existe aqui.',
+        },
+        {
+          tag: 'ministério / apologista',
+          line: 'ensino, testemunho, estudo bíblico. seu trabalho protegido pela aup, não sujeito a viés de moderação.',
+        },
+        {
+          tag: 'comunidade local',
+          line: 'ong, coletivo, cooperativa. ferramenta de mídia sem depender de corporate cloud.',
+        },
+      ],
     },
     portals: [
       {
@@ -91,6 +129,7 @@ export const ptBR = {
     quote: '“persistência não implica distribuição.”',
     paragraphsBetween: [
       'criadores cujo trabalho é derrubado por decisões opacas, vozes que perdem alcance sem aviso, meios e ministérios que dependem de cdns que podem mudar a regra da noite para o dia — todos precisam de uma camada que não dependa da tolerância caprichosa de um provedor único. aevia é essa camada. não por idealismo, mas por arquitetura.',
+      'e não é apenas o criador perseguido que ganha com isso. o gamer que não quer perder três anos de streaming por uma policy change, o jornalista local que cobre conselho municipal e precisa de hosting confiável, a educadora que construiu biblioteca de aulas por uma década, o documentarista com investigação em andamento, o ministério com arquivo de testemunho — todos operam sob a mesma infraestrutura instável. aevia é pra essas comunidades inteiras, não só pros casos dramáticos.',
       'manifestos assinados em base l2. conteúdo endereçado por cid. compensação em cusdc pelos serviços de replicação que provider nodes prestam. quando um cdn comercial decide derrubar você, suas cópias continuam onde sempre estiveram, alcançáveis pelo mesmo cid que seu público já conhece.',
     ],
     paragraphsAfterBreak: [
@@ -249,6 +288,7 @@ export const ptBR = {
     leadParagraphs: [
       'a aevia distingue persistência e distribuição. persistência significa que seu conteúdo continua existindo na blockchain e no ipfs. distribuição significa que nós pagamos para hospedá-lo em nós de persistência, mostramos ele no feed, ou subsidiamos seu alcance. esta política rege a segunda, não a primeira.',
       'o que você ler abaixo não proíbe bits no ipfs raw. decreta apenas que tipos de conteúdo não recebem cheque do persistence pool, não entram no feed curado e não são surfaceados em ranking. a diferença é arquitetural e intencional — e é o que preserva a imunidade da aevia como intermediário sob section 230 (47 u.s.c. §230).',
+      'a aup reflete valores amplamente compartilhados por comunidades saudáveis — pais querem plataforma sem csam ou ncii; educadores querem moderação auditável; jornalistas sérios querem critério editorial público; famílias querem feed sem contaminação. valores cristãos clássicos convergem com isso. a aup é expressão desses valores, não propriedade de um grupo.',
     ],
     exclusionsTitle: 'o que a aevia não amplifica',
     exclusionsLead:
