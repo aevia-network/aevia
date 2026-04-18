@@ -598,21 +598,42 @@ registrations to the ContentRegistry on behalf of creators. It is
 specified normatively in `3-authentication.md` §8.
 
 The Relayer fee is charged per manifest registered. The default
-fee is **$0.25 USD equivalent per registration**, denominated in
-cUSDC, collected at registration time from the creator's Aevia
-balance (future) or waived during bootstrap (current). The fee
-is flat regardless of manifest size, because the on-chain cost is
+in **bootstrap phase** is **$0 — waived** (the LLC absorbs the
+on-chain gas cost). The default in **steady state** is **$0.05
+USD equivalent per registration**, denominated in cUSDC, collected
+at registration time from the creator's Aevia balance. The fee is
+flat regardless of manifest size, because the on-chain cost is
 dominated by EIP-712 signature verification and storage write,
 both of which are size-independent.
 
+The numbers are calibrated to the market. Base L2 gas for a
+ContentRegistry.register call typically costs $0.005–$0.03 at
+baseline and up to $0.10 in peak congestion. A $0.05 steady-state
+fee therefore covers the Operator's cost with a modest margin,
+without imposing a per-action tax that competes against creator
+expectations set by platforms that do not charge per-post
+(YouTube, Twitch, Substack, Rumble, Farcaster, Patreon). At 1M
+manifests per month the steady-state fee produces ~$50k monthly,
+which is material but not load-bearing for LLC solvency.
+
+During bootstrap the fee is waived specifically because the cost
+to the LLC (≈$0.02 × volume) is trivial compared to the adoption
+friction a $0.25 or even $0.05 per-manifest fee would impose on
+creators evaluating migration from free platforms. The Operator
+announces the transition from waived to $0.05 on the Trust Ledger
+with at least 90 days notice.
+
 Revenue destination: LLC Treasury (100%).
 
-The relayer fee is **LLC-unilateral** — the Operator sets it.
-Justification: the relayer is a service operated by the LLC, not
-a protocol primitive; the LLC may price it at whatever level the
-market bears, subject to the constraint that no other party may
-be excluded from submitting their own (non-gas-sponsored)
-registration directly to the ContentRegistry.
+The relayer fee is **LLC-unilateral with constraints** — the
+Operator sets it, but:
+(i) any increase above the $0.05 default requires Council
+ratification per RFC 7 §4;
+(ii) any change takes effect at minimum 90 days after Trust
+Ledger announcement;
+(iii) creators can always submit manifest registrations directly
+to the ContentRegistry without the relayer (paying their own
+gas), making the relayer a pure convenience service.
 
 ### 6.2 Aggregator fee
 

@@ -593,7 +593,7 @@ export const ptBR = {
       },
       {
         tag: 'relayer',
-        text: 'serviço gas-sponsored de registro de manifesto no content registry. creator assina eip-712 (rfc-3), relayer submete a transação e cobra $0.25 cusdc por registro. rfc-8 §6.1.',
+        text: 'serviço gas-sponsored de registro de manifesto no content registry. creator assina eip-712 (rfc-3), relayer submete a transação. fee waived durante bootstrap; $0.05 cusdc por registro em steady state (cobre gas base l2 ~$0.02 + margem modesta). rfc-8 §6.1.',
       },
       {
         tag: 'settlement aggregator',
@@ -643,7 +643,7 @@ export const ptBR = {
       },
       {
         tag: 'relayer fee',
-        text: 'flat $0.25 cusdc por manifest registrado via relayer. rfc-8 §6.1.',
+        text: 'waived durante bootstrap (llc absorve gas); $0.05 cusdc flat por manifest em steady state. transição announced no trust ledger com ≥90 dias de antecedência. rfc-8 §6.1.',
       },
       {
         tag: 'aggregator fee',

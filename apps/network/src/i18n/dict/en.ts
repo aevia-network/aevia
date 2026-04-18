@@ -596,7 +596,7 @@ export const en: Dictionary = {
       },
       {
         tag: 'relayer',
-        text: 'gas-sponsored service for registering manifests to the content registry. creator signs eip-712 (rfc-3), relayer submits the transaction and charges $0.25 cusdc per registration. rfc-8 §6.1.',
+        text: 'gas-sponsored service for registering manifests to the content registry. creator signs eip-712 (rfc-3), relayer submits the transaction. fee waived during bootstrap; $0.05 cusdc per registration at steady state (covers base l2 gas ~$0.02 + modest margin). rfc-8 §6.1.',
       },
       {
         tag: 'settlement aggregator',
@@ -646,7 +646,7 @@ export const en: Dictionary = {
       },
       {
         tag: 'relayer fee',
-        text: 'flat $0.25 cusdc per manifest registered via the relayer. rfc-8 §6.1.',
+        text: 'waived during bootstrap (llc absorbs gas); $0.05 cusdc flat per manifest at steady state. transition announced on the trust ledger with ≥90 days notice. rfc-8 §6.1.',
       },
       {
         tag: 'aggregator fee',
