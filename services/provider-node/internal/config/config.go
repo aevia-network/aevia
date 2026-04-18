@@ -31,6 +31,13 @@ type Config struct {
 	HTTPAddr       string // plain HTTP listen address, used by Provider Público mode
 	BootstrapPeers string // comma-separated /p2p-terminated multiaddrs for DHT bootstrap
 	RelayPeers     string // comma-separated /p2p-terminated multiaddrs for AutoRelay static relays
+	// MirrorPeers is the comma-separated list of libp2p peer IDs (bare
+	// peer.ID strings, NOT multiaddrs) to which this origin replicates
+	// every WHIP session's RTP stream (Fase 2.1). Empty disables the
+	// mirror client — the node stays single-origin. Peers MUST be
+	// reachable via the same libp2p host (bootstrap peers or existing
+	// connections). Self-references are silently skipped.
+	MirrorPeers string
 	// ForceReachability overrides AutoNAT detection. Empty, "public", or
 	// "private". Public is for Relay Nodes on VPS that auto-detection
 	// sometimes misclassifies; "private" is for NAT Provider Nodes that
@@ -117,6 +124,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.HTTPAddr, "http-addr", cfg.HTTPAddr, "plain HTTP listen address for Provider Público path")
 	fs.StringVar(&cfg.BootstrapPeers, "bootstrap", cfg.BootstrapPeers, "comma-separated /p2p-terminated multiaddrs to bootstrap the DHT from")
 	fs.StringVar(&cfg.RelayPeers, "relay-peers", cfg.RelayPeers, "comma-separated /p2p-terminated multiaddrs of Circuit Relay v2 nodes to reserve slots on (for NAT Provider Nodes)")
+	fs.StringVar(&cfg.MirrorPeers, "mirror-peers", cfg.MirrorPeers, "comma-separated libp2p peer IDs to mirror every WHIP session's RTP stream to (empty disables)")
 	fs.StringVar(&cfg.ForceReachability, "force-reachability", cfg.ForceReachability, "override AutoNAT reachability: \"public\", \"private\", or empty")
 	fs.StringVar(&cfg.AllowedDIDs, "allowed-dids", cfg.AllowedDIDs, "comma-separated WHIP creator DID allowlist (empty disables auth)")
 	fs.StringVar(&cfg.PublicIPs, "public-ips", cfg.PublicIPs, "comma-separated public IPs this node is reachable at (needed for NAT 1:1 ICE)")
@@ -190,6 +198,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_RELAY_PEERS"); v != "" {
 		cfg.RelayPeers = v
+	}
+	if v := os.Getenv("AEVIA_MIRROR_PEERS"); v != "" {
+		cfg.MirrorPeers = v
 	}
 	if v := os.Getenv("AEVIA_FORCE_REACHABILITY"); v != "" {
 		cfg.ForceReachability = v

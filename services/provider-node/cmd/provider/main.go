@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	webrtc "github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/mirror"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/sessioncid"
@@ -179,6 +181,73 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	}
 	liveRouter := whip.NewLiveRouter()
 	whipLog := logger.With().Str("component", "whip").Logger()
+
+	// Mirror wiring (Fase 2.1) — bidirectional.
+	// Server side: accept inbound mirror streams from other origins,
+	// inject whip.Sessions locally so /whep viewers can subscribe,
+	// announce the sessionCID so the DHT resolve also points here.
+	// Client side: when OUR WHIP session starts, fan out RTP packets
+	// to each configured downstream mirror peer.
+	//
+	// Empty AEVIA_MIRROR_PEERS disables the client without disabling
+	// the server — any node can be a mirror endpoint regardless of
+	// whether it also replicates its own sessions.
+	mirrorPeers, mirrorPeersErrs := parseMirrorPeers(cfg.MirrorPeers)
+	for _, perr := range mirrorPeersErrs {
+		logger.Warn().Err(perr).Str("event", "mirror_peer_parse_failed").Msg("skipping invalid mirror peer id")
+	}
+	mirrorLog := logger.With().Str("component", "mirror").Logger()
+	// mirror package uses slog; we pass nil so it picks slog.Default().
+	// Full structured events still land via mirrorLog (zerolog) inside
+	// the OnSession / OnClose callbacks we wire below.
+	mirrorSrv, err := mirror.NewServer(n.Host(), whipSrv, nil)
+	if err != nil {
+		return err
+	}
+	mirrorSrv.OnSession = func(sess *whip.Session) {
+		// Mirror got a fan-out stream from an origin. Announce the
+		// sessionCID so viewers doing /dht/resolve can discover that
+		// THIS node also serves the stream — same CID, different peerID.
+		go func() {
+			announceCid, cerr := sessioncid.Of(sess.ID)
+			if cerr != nil {
+				mirrorLog.Warn().Err(cerr).Str("event", "mirror_session_cid_failed").Str("session_id", sess.ID).Msg("derive session cid")
+				return
+			}
+			actx, acancel := context.WithTimeout(ctx, 30*time.Second)
+			defer acancel()
+			if aerr := d.Provide(actx, announceCid); aerr != nil {
+				mirrorLog.Warn().Err(aerr).Str("event", "mirror_session_announce_failed").Str("session_id", sess.ID).Str("cid", announceCid).Msg("dht provide mirror session")
+				return
+			}
+			mirrorLog.Info().Str("event", "mirror_session_announced").Str("session_id", sess.ID).Str("cid", announceCid).Msg("mirror session announced in DHT")
+		}()
+	}
+	mirrorSrv.OnClose = func(sessionID string, m *mirror.HopMetrics) {
+		mirrorLog.Info().
+			Str("event", "mirror_session_stats").
+			Str("session_id", sessionID).
+			Int("video_pkts", m.VideoCount()).
+			Int("audio_pkts", m.AudioCount()).
+			Int64("hop_p50_ns", m.P50Nanos()).
+			Int64("hop_p95_ns", m.P95Nanos()).
+			Int64("hop_p99_ns", m.P99Nanos()).
+			Msg("mirror session closed")
+	}
+	mirrorSrv.Start(ctx)
+
+	mirrorClient, err := mirror.NewClient(n.Host(), mirrorPeers, nil, mirror.ClientOptions{})
+	if err != nil {
+		return err
+	}
+	if len(mirrorPeers) > 0 {
+		ids := make([]string, 0, len(mirrorPeers))
+		for _, p := range mirrorPeers {
+			ids = append(ids, p.String())
+		}
+		mirrorLog.Info().Strs("peers", ids).Str("event", "mirror_client_ready").Msgf("origin will fan out to %d mirror(s)", len(mirrorPeers))
+	}
+
 	whipSrv.OnSession(func(sess *whip.Session) {
 		sink, err := whip.NewLivePinSink(cs, sess.ID)
 		if err != nil {
@@ -199,20 +268,41 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 			// the same RTP stream our CMAF segmenter consumes. See
 			// internal/whep/whep.go — viewers AddTrack(hub) and pion
 			// forwards every packet we write with SSRC rewrite.
-			hub, err := sess.EnsureHubFor(track)
-			if err != nil {
-				whipLog.Warn().Err(err).
+			if _, herr := sess.EnsureHubFor(track); herr != nil {
+				whipLog.Warn().Err(herr).
 					Str("event", "live_hub_init_failed").
 					Str("session_id", sess.ID).
 					Str("kind", track.Kind().String()).
 					Msg("failed to build SFU hub; WHEP viewers won't see this track")
 			}
 			go func() {
-				if err := whip.TeeReadTrack(track, hub, seg); err != nil {
+				// TeeReadSessionTrack pipes RTP into both the hub (for
+				// WHEP viewers) and every RTPSink attached by the mirror
+				// client (for cross-node replication). Sinks are only
+				// registered when --mirror-peers is non-empty.
+				if err := whip.TeeReadSessionTrack(track, sess, seg); err != nil {
 					whipLog.Warn().Err(err).Str("event", "live_track_eof").Str("session_id", sess.ID).Msg("track pump ended")
 				}
 			}()
 		})
+		// Start replicating this session to all configured mirror peers.
+		// Codec capabilities match the whip.Server MediaEngine config
+		// (H.264 Constrained Baseline + Opus) — see whip.NewServer.
+		// StartMirroring is a no-op when len(mirrorPeers) == 0.
+		if started := mirrorClient.StartMirroring(ctx, sess,
+			webrtc.RTPCodecCapability{
+				MimeType:    webrtc.MimeTypeH264,
+				ClockRate:   90_000,
+				SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+			},
+			webrtc.RTPCodecCapability{
+				MimeType:  webrtc.MimeTypeOpus,
+				ClockRate: 48_000,
+				Channels:  2,
+			},
+		); started > 0 {
+			mirrorLog.Info().Int("mirrors", started).Str("session_id", sess.ID).Str("event", "mirror_fanout_started").Msg("origin replicating session to mirrors")
+		}
 		// Announce this live session in the DHT so viewers querying any
 		// Aevia node via /dht/resolve can discover which provider holds
 		// the stream. Without this the viewer is forced to a hardcoded
@@ -443,3 +533,27 @@ func splitCSV(raw string) []string {
 	}
 	return out
 }
+
+// parseMirrorPeers converts a CSV string of libp2p peer IDs to
+// []peer.ID. Malformed entries are collected as errors the caller can
+// log; the returned slice only contains successfully parsed IDs.
+// Multiaddrs are NOT accepted here — we resolve peerIDs against the
+// existing host's peerstore / DHT at stream-open time.
+func parseMirrorPeers(raw string) ([]peer.ID, []error) {
+	items := splitCSV(raw)
+	if len(items) == 0 {
+		return nil, nil
+	}
+	peers := make([]peer.ID, 0, len(items))
+	var errs []error
+	for _, s := range items {
+		id, err := peer.Decode(s)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("parse mirror peer %q: %w", s, err))
+			continue
+		}
+		peers = append(peers, id)
+	}
+	return peers, errs
+}
+
