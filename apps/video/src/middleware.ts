@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const PROTECTED = ['/dashboard', '/live/new'];
+const PROTECTED = ['/dashboard', '/live/new', '/wallet'];
 
 /**
  * Middleware gate — requires a Privy-emitted cookie before allowing through
@@ -48,5 +48,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/live/new/:path*'],
+  matcher: ['/dashboard/:path*', '/live/new/:path*', '/wallet/:path*'],
 };
