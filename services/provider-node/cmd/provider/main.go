@@ -240,7 +240,43 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 			if err := seg.Close(); err != nil {
 				whipLog.Warn().Err(err).Str("event", "live_segmenter_close").Str("session_id", sess.ID).Msg("segmenter close")
 			}
-			liveRouter.DetachSession(sess.ID)
+			// Pin the final manifest so the VOD endpoint (manifest.json
+			// + EXT-X-ENDLIST playlist) becomes available. Idempotent
+			// if CMAFSegmenter.Close already drove Finalize.
+			finalManifest, err := sink.Finalize(whip.TargetSegmentDuration)
+			if err != nil {
+				whipLog.Warn().Err(err).
+					Str("event", "live_finalize_failed").
+					Str("session_id", sess.ID).
+					Msg("finalize manifest")
+			} else if finalManifest != nil {
+				// Announce the manifest CID so viewers post-live can
+				// discover the replay via /dht/resolve — same pattern as
+				// the live-session announce but using the cryptographic
+				// manifest CID rather than the session-derived CID.
+				go func(cidStr string) {
+					actx, acancel := context.WithTimeout(ctx, 30*time.Second)
+					defer acancel()
+					if err := d.Provide(actx, cidStr); err != nil {
+						whipLog.Warn().Err(err).
+							Str("event", "manifest_announce_failed").
+							Str("session_id", sess.ID).
+							Str("cid", cidStr).
+							Msg("dht provide manifest")
+						return
+					}
+					whipLog.Info().
+						Str("event", "manifest_announced").
+						Str("session_id", sess.ID).
+						Str("cid", cidStr).
+						Msg("VOD manifest announced in DHT")
+				}(finalManifest.CID)
+			}
+			// NOTE: we deliberately keep the session attached to the
+			// LiveRouter after Close so viewers arriving late can still
+			// fetch manifest.json + playlist.m3u8 + segments. Eviction
+			// policy (e.g., TTL based on endedAt, or disk-space cap)
+			// lands with the operator tools in a future iteration.
 			whipLog.Info().Str("event", "live_session_ended").Str("session_id", sess.ID).Msg("live session ended")
 		}()
 		whipLog.Info().Str("event", "live_session_started").Str("session_id", sess.ID).Msg("live session started")
