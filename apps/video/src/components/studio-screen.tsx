@@ -4,7 +4,15 @@ import type { LiveRowData } from '@/app/dashboard/live-row';
 import { LiveRow } from '@/app/dashboard/live-row';
 import { BottomNav } from '@/components/bottom-nav';
 import { LogoutButton } from '@/components/logout-button';
-import { ArrowLeft, ArrowRight, Database, Radio, ScrollText, Wallet } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  Database,
+  Radio,
+  ScrollText,
+  Wallet,
+} from 'lucide-react';
 import Link from 'next/link';
 
 /**
@@ -47,11 +55,12 @@ export function StudioScreen({ viewer, lives }: StudioScreenProps) {
 
       <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 pt-6 pb-10">
         <IdentityHero viewer={viewer} />
-        <QuickLinks />
+        <WalletPreviewCard viewer={viewer} />
         <PrimaryCta />
         <KpiRow published={publishedCount} anchored={anchoredCount} liveNow={liveNowCount} />
         <TransmissionsSection lives={lives} />
         <EconomyMockNote />
+        <SecondaryLinks />
         <DidTerminal viewer={viewer} />
       </main>
 
@@ -78,9 +87,26 @@ function TopChrome() {
             estúdio
           </h1>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-2">
+          <WalletChip />
+          <LogoutButton />
+        </div>
       </div>
     </header>
+  );
+}
+
+// Mirror the credits chip in `/feed` chrome — same href, same icon, same
+// honest "em breve" suffix until CreditToken contract ships in sprint 3.
+function WalletChip() {
+  return (
+    <Link
+      href="/wallet"
+      className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-on-surface text-xs lowercase transition-colors hover:bg-surface-high"
+    >
+      <Wallet className="size-4 text-secondary" aria-hidden />
+      20 créditos · em breve
+    </Link>
   );
 }
 
@@ -105,28 +131,61 @@ function IdentityHero({ viewer }: { viewer: StudioViewer }) {
   );
 }
 
-// ---- Quick links (sub-routes of perfil + pedagogy) -----------------------
+// ---- Wallet preview card (prominent sub-route of perfil) ----------------
 
-function QuickLinks() {
+// Replaces the previous tiny "carteira" chip in `<QuickLinks>` with a
+// full-width card that gives the wallet visible weight on the studio.
+// Aligns with the Stitch wallet canonical contract — wallet is the
+// economic surface of perfil, not a peer of pedagogical links.
+function WalletPreviewCard({ viewer }: { viewer: StudioViewer }) {
   return (
-    <nav aria-label="links rápidos" className="flex flex-wrap gap-2">
-      <Link
-        href="/wallet"
-        className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-on-surface/80 text-xs lowercase transition-colors hover:bg-surface-high hover:text-on-surface"
-      >
-        <Wallet className="size-3.5 text-secondary" aria-hidden />
-        carteira
-      </Link>
+    <Link
+      href="/wallet"
+      aria-label="abrir carteira"
+      className="group flex items-center gap-4 rounded-md bg-surface-container p-4 transition-colors hover:bg-surface-high"
+    >
+      <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-secondary/15">
+        <Wallet className="size-6 text-secondary" aria-hidden />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-baseline gap-2">
+          <span className="font-headline font-semibold text-base text-on-surface lowercase">
+            carteira
+          </span>
+          <span className="font-label text-[10px] text-on-surface/40 uppercase tracking-wider">
+            em breve
+          </span>
+        </div>
+        <span className="font-headline font-semibold text-[22px] text-secondary leading-none lowercase">
+          20 créditos
+        </span>
+        <span className="truncate font-mono text-[10px] text-on-surface/40">
+          {viewer.shortAddress} · sepolia
+        </span>
+      </div>
+      <ChevronRight
+        className="size-5 shrink-0 text-on-surface/30 transition-colors group-hover:text-on-surface/70"
+        aria-hidden
+      />
+    </Link>
+  );
+}
+
+// ---- Secondary links (pedagogy footer) ----------------------------------
+
+function SecondaryLinks() {
+  return (
+    <nav aria-label="links de pedagogia" className="flex flex-wrap gap-2">
       <Link
         href="/trust"
-        className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-on-surface/80 text-xs lowercase transition-colors hover:bg-surface-high hover:text-on-surface"
+        className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-on-surface/70 text-xs lowercase transition-colors hover:bg-surface-high hover:text-on-surface"
       >
         <ScrollText className="size-3.5 text-tertiary" aria-hidden />
         transparência
       </Link>
       <Link
         href="/aup"
-        className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-on-surface/80 text-xs lowercase transition-colors hover:bg-surface-high hover:text-on-surface"
+        className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-on-surface/70 text-xs lowercase transition-colors hover:bg-surface-high hover:text-on-surface"
       >
         política de uso
       </Link>
