@@ -39,22 +39,35 @@ type FrameSink interface {
 // signals EOF (creator disconnected).
 //
 // The caller is responsible for running this in a goroutine per track
-// (audio + video are separate tracks in a WHIP session).
+// (audio + video are separate tracks in a WHIP session). Use TeeReadTrack
+// when WHEP viewers also need the raw RTP stream.
 func ReadTrack(track *webrtc.TrackRemote, sink FrameSink) error {
+	return TeeReadTrack(track, nil, sink)
+}
+
+// TeeReadTrack is ReadTrack with an optional fan-out hub. When hub is
+// non-nil, every raw RTP packet pulled off the remote track is first
+// written to the hub (which pion relays to every PeerConnection that
+// bound hub.AddTrack) and then depacketized for the sink.
+//
+// This is the single-reader SFU pattern pion recommends: one goroutine
+// owns the TrackRemote; fan-out and application consumers both live
+// downstream of it.
+func TeeReadTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, sink FrameSink) error {
 	if track == nil || sink == nil {
-		return fmt.Errorf("whip: ReadTrack requires track and sink")
+		return fmt.Errorf("whip: TeeReadTrack requires track and sink")
 	}
 	switch track.Kind() {
 	case webrtc.RTPCodecTypeVideo:
-		return readVideoTrack(track, sink)
+		return teeVideoTrack(track, hub, sink)
 	case webrtc.RTPCodecTypeAudio:
-		return readAudioTrack(track, sink)
+		return teeAudioTrack(track, hub, sink)
 	default:
 		return fmt.Errorf("whip: unsupported track kind %v", track.Kind())
 	}
 }
 
-func readVideoTrack(track *webrtc.TrackRemote, sink FrameSink) error {
+func teeVideoTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, sink FrameSink) error {
 	depack := &codecs.H264Packet{IsAVC: false}
 	for {
 		pkt, _, err := track.ReadRTP()
@@ -63,6 +76,12 @@ func readVideoTrack(track *webrtc.TrackRemote, sink FrameSink) error {
 				return nil
 			}
 			return err
+		}
+		if hub != nil {
+			// Fan-out to every WHEP viewer subscribed to this hub.
+			// Errors here are non-fatal — a slow consumer shouldn't
+			// kill the publisher. pion queues per-sender.
+			_ = hub.WriteRTP(pkt)
 		}
 		nal, err := depack.Unmarshal(pkt.Payload)
 		if err != nil {
@@ -82,7 +101,7 @@ func readVideoTrack(track *webrtc.TrackRemote, sink FrameSink) error {
 	}
 }
 
-func readAudioTrack(track *webrtc.TrackRemote, sink FrameSink) error {
+func teeAudioTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, sink FrameSink) error {
 	for {
 		pkt, _, err := track.ReadRTP()
 		if err != nil {
@@ -90,6 +109,9 @@ func readAudioTrack(track *webrtc.TrackRemote, sink FrameSink) error {
 				return nil
 			}
 			return err
+		}
+		if hub != nil {
+			_ = hub.WriteRTP(pkt)
 		}
 		sink.OnAudioFrame(AudioFrame{
 			Opus:      append([]byte(nil), pkt.Payload...),

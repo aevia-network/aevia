@@ -80,6 +80,7 @@ export default async function LiveViewerPage({ params }: { params: Promise<{ id:
       whepUrl={live.webRTCPlayback.url}
       hlsUrl={vodHlsUrl}
       aeviaHlsUrl={null}
+      aeviaWhepUrl={null}
       vodProcessing={vodProcessing}
       creatorDisplayName={creatorDisplayName}
       creatorAddress={creatorAddress || null}

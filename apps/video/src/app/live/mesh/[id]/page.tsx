@@ -37,6 +37,7 @@ export default async function MeshLiveViewerPage({
       whepUrl={''}
       hlsUrl={null}
       aeviaHlsUrl={`${base}/live/${id}/playlist.m3u8`}
+      aeviaWhepUrl={`${base}/whep/${id}`}
       vodProcessing={false}
       creatorDisplayName="aevia"
       creatorAddress={null}

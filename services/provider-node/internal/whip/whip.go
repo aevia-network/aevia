@@ -41,6 +41,14 @@ type Session struct {
 	mu            sync.Mutex
 	trackHandlers []func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 	doneCh        chan struct{}
+
+	// Hub tracks are per-session TrackLocalStaticRTPs that mirror the
+	// creator's RTP stream so N WHEP viewers can subscribe without the
+	// creator re-encoding. TeeReadTrack populates them, the whep package
+	// consumes them via VideoHub / AudioHub.
+	hubMu    sync.RWMutex
+	videoHub *webrtc.TrackLocalStaticRTP
+	audioHub *webrtc.TrackLocalStaticRTP
 }
 
 // Close drops the peer connection and signals session end. Idempotent.
@@ -70,6 +78,81 @@ func (s *Session) OnTrack(handler func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 	s.mu.Lock()
 	s.trackHandlers = append(s.trackHandlers, handler)
 	s.mu.Unlock()
+}
+
+// VideoHub returns the session's video fan-out track, or nil if the
+// creator hasn't sent a video track yet. WHEP handlers call this to
+// attach viewers: pc.AddTrack(session.VideoHub()) subscribes the viewer
+// to every RTP packet the creator publishes.
+func (s *Session) VideoHub() *webrtc.TrackLocalStaticRTP {
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+	return s.videoHub
+}
+
+// AudioHub is the audio counterpart of VideoHub. Audio mux into CMAF
+// lands in M9; the hub path already works for WHEP viewers.
+func (s *Session) AudioHub() *webrtc.TrackLocalStaticRTP {
+	s.hubMu.RLock()
+	defer s.hubMu.RUnlock()
+	return s.audioHub
+}
+
+// setVideoHub stores the hub track (called by TeeReadTrack once the
+// creator's first RTP packet reveals the codec parameters).
+func (s *Session) setVideoHub(hub *webrtc.TrackLocalStaticRTP) {
+	s.hubMu.Lock()
+	s.videoHub = hub
+	s.hubMu.Unlock()
+}
+
+// setAudioHub stores the audio hub. See setVideoHub.
+func (s *Session) setAudioHub(hub *webrtc.TrackLocalStaticRTP) {
+	s.hubMu.Lock()
+	s.audioHub = hub
+	s.hubMu.Unlock()
+}
+
+// EnsureHubFor creates the correct hub (video or audio) for the given
+// remote track if one doesn't exist yet, matching its codec capability.
+// Safe to call repeatedly; second call returns the cached hub.
+//
+// The trackID is forwarded to TrackLocalStaticRTP so WHEP SDP answers
+// advertise a stable identifier. The streamID groups related hubs so
+// browsers render audio+video together as one logical MediaStream.
+func (s *Session) EnsureHubFor(remote *webrtc.TrackRemote) (*webrtc.TrackLocalStaticRTP, error) {
+	if remote == nil {
+		return nil, errors.New("whip: EnsureHubFor requires remote track")
+	}
+	s.hubMu.Lock()
+	defer s.hubMu.Unlock()
+	kind := remote.Kind()
+	cap := remote.Codec().RTPCodecCapability
+	trackID := "aevia-" + kind.String() + "-" + s.ID
+	switch kind {
+	case webrtc.RTPCodecTypeVideo:
+		if s.videoHub != nil {
+			return s.videoHub, nil
+		}
+		hub, err := webrtc.NewTrackLocalStaticRTP(cap, trackID, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("whip: create video hub: %w", err)
+		}
+		s.videoHub = hub
+		return hub, nil
+	case webrtc.RTPCodecTypeAudio:
+		if s.audioHub != nil {
+			return s.audioHub, nil
+		}
+		hub, err := webrtc.NewTrackLocalStaticRTP(cap, trackID, s.ID)
+		if err != nil {
+			return nil, fmt.Errorf("whip: create audio hub: %w", err)
+		}
+		s.audioHub = hub
+		return hub, nil
+	default:
+		return nil, fmt.Errorf("whip: unsupported track kind %v", kind)
+	}
 }
 
 // Server accepts WHIP ingest requests and spins up one Session per.
@@ -149,6 +232,12 @@ func NewServer(opts Options) (*Server, error) {
 		// Without this, ICE stalls forever for clients outside the NAT.
 		settings.SetNAT1To1IPs(opts.PublicIPs, webrtc.ICECandidateTypeHost)
 	}
+	// Loopback candidates are critical for same-host tests (and for any
+	// scenario where a viewer and creator share a machine). Wi-Fi client
+	// isolation on some networks also blocks peer discovery between two
+	// IPs on the same subnet — loopback sidesteps that for co-resident
+	// viewers like test harnesses.
+	settings.SetIncludeLoopbackCandidate(true)
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithSettingEngine(settings))
 	dids := make(map[string]struct{}, len(opts.AuthorisedDIDs))
 	for _, did := range opts.AuthorisedDIDs {

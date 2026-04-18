@@ -34,6 +34,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/tlsauto"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/whep"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/whip"
 	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
@@ -185,8 +186,20 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 			return
 		}
 		sess.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+			// Build a per-codec fan-out hub so WHEP viewers attach to
+			// the same RTP stream our CMAF segmenter consumes. See
+			// internal/whep/whep.go — viewers AddTrack(hub) and pion
+			// forwards every packet we write with SSRC rewrite.
+			hub, err := sess.EnsureHubFor(track)
+			if err != nil {
+				whipLog.Warn().Err(err).
+					Str("event", "live_hub_init_failed").
+					Str("session_id", sess.ID).
+					Str("kind", track.Kind().String()).
+					Msg("failed to build SFU hub; WHEP viewers won't see this track")
+			}
 			go func() {
-				if err := whip.ReadTrack(track, seg); err != nil {
+				if err := whip.TeeReadTrack(track, hub, seg); err != nil {
 					whipLog.Warn().Err(err).Str("event", "live_track_eof").Str("session_id", sess.ID).Msg("track pump ended")
 				}
 			}()
@@ -203,6 +216,19 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	})
 	whipSrv.Register(srv)
 	liveRouter.Register(srv)
+
+	// WHEP egress — viewers POST SDP to /whep/{sessionID} and we fan
+	// out the session's RTP stream via pion TrackLocalStaticRTP. Same
+	// PublicIPs config as WHIP because viewer PeerConnections face the
+	// same NAT constraints.
+	whepSrv, err := whep.New(whep.Options{
+		WhipServer: whipSrv,
+		PublicIPs:  splitCSV(cfg.PublicIPs),
+	})
+	if err != nil {
+		return err
+	}
+	whepSrv.Register(srv)
 
 	// /dht/resolve lets Provider-mode nodes double as DHT proxies for
 	// browser clients. Harmless on a Provider NAT and unlocks WHEP wiring

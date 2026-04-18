@@ -49,11 +49,17 @@ export interface PlayerScreenProps {
   hlsUrl: string | null;
   /**
    * HLS playlist URL served by an Aevia provider-node (M8 mesh path).
-   * When set, playback skips WHEP entirely and uses hls.js against the
-   * provider's `/live/{sessionId}/playlist.m3u8` — ~10s latency,
-   * zero Cloudflare. `null` means the legacy Cloudflare WHEP+HLS path.
+   * ~10s latency, universal browser support. Fallback used when
+   * `aeviaWhepUrl` is absent or the WebRTC handshake fails.
    */
   aeviaHlsUrl: string | null;
+  /**
+   * WHEP URL served by an Aevia provider-node (M8.5 SFU path).
+   * When set, playback negotiates a WebRTC PeerConnection directly
+   * against the node; latency drops to ~300-500ms. The HLS path above
+   * stays as a fallback in case WHEP handshake fails.
+   */
+  aeviaWhepUrl: string | null;
   vodProcessing?: boolean;
   creatorDisplayName: string;
   creatorAddress: `0x${string}` | null;
@@ -78,12 +84,20 @@ export function PlayerScreen(props: PlayerScreenProps) {
   const [vodStatus, setVodStatus] = useState<VodStatus>('idle');
   const [vodError, setVodError] = useState<string | null>(null);
 
+  // WHEP preference: aevia mesh first (our own SFU, zero Cloudflare),
+  // Cloudflare Stream WHEP as the legacy fallback. The HLS.js effect
+  // below takes over when both WHEP URLs are unset or WHEP fails.
+  const effectiveWhepUrl = props.aeviaWhepUrl ?? (props.whepUrl || null);
+
   const startLive = useCallback(async () => {
+    if (!effectiveWhepUrl) {
+      return; // HLS-only path — the other effect drives playback.
+    }
     setLiveStatus('connecting');
     setLiveError(null);
     try {
       const session = await playWhep({
-        whepUrl: props.whepUrl,
+        whepUrl: effectiveWhepUrl,
         onConnectionStateChange: (s) => {
           if (s === 'connected') setLiveStatus('playing');
           if (s === 'failed' || s === 'closed') {
@@ -107,26 +121,28 @@ export function PlayerScreen(props: PlayerScreenProps) {
       setLiveError(err instanceof Error ? err.message : 'falha ao conectar');
       setLiveStatus('error');
     }
-  }, [props.whepUrl]);
+  }, [effectiveWhepUrl]);
 
   useEffect(() => {
     if (mode !== 'live') return;
-    // Aevia-mesh path: skip WHEP entirely, let the HLS effect below
-    // drive playback from the provider-node's live playlist. WHEP on our
-    // own mesh lands in M8.5 (see task #76).
-    if (props.aeviaHlsUrl) return;
-    void startLive();
-    return () => {
-      void whepSessionRef.current?.stop();
-      whepSessionRef.current = null;
-    };
-  }, [mode, startLive, props.aeviaHlsUrl]);
+    // When WHEP is available (either aevia-mesh SFU or Cloudflare),
+    // startLive drives playback. The HLS.js effect below only kicks in
+    // when WHEP isn't available OR fails — it checks effectiveWhepUrl.
+    if (effectiveWhepUrl) {
+      void startLive();
+      return () => {
+        void whepSessionRef.current?.stop();
+        whepSessionRef.current = null;
+      };
+    }
+  }, [mode, startLive, effectiveWhepUrl]);
 
-  // Aevia-mesh live playback: hls.js against the provider-node's rolling
-  // playlist. Keeps the same <video> element the WHEP path uses so the
-  // rest of the UI (autoplay gate, states, controls) stays unchanged.
+  // Aevia-mesh live playback via hls.js — used as fallback when WHEP
+  // isn't configured. Keeps the same <video> element WHEP uses so the
+  // autoplay gate / states / controls stay unchanged.
   useEffect(() => {
     if (mode !== 'live') return;
+    if (effectiveWhepUrl) return; // WHEP path owns playback
     if (!props.aeviaHlsUrl) return;
     const video = videoRef.current;
     if (!video) return;
@@ -184,7 +200,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
     setLiveError('navegador não suporta HLS');
     setLiveStatus('error');
-  }, [mode, props.aeviaHlsUrl]);
+  }, [mode, props.aeviaHlsUrl, effectiveWhepUrl]);
 
   // ---- Auto-handoff live → VOD when broadcaster ends transmission ---------
   // The WHEP `disconnected` callback already flips `liveStatus` to `'ended'`
