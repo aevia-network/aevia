@@ -1,7 +1,9 @@
+import { type Locale, isLocale, locales } from '@/i18n/config';
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Inter, Sora } from 'next/font/google';
+import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import './globals.css';
+import '../globals.css';
 
 const sora = Sora({
   subsets: ['latin'],
@@ -46,10 +48,23 @@ export const viewport: Viewport = {
   colorScheme: 'dark',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export function generateStaticParams(): { locale: Locale }[] {
+  return locales.map((locale) => ({ locale }));
+}
+
+export default async function LocaleLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${sora.variable} ${inter.variable} ${geist.variable} ${geistMono.variable}`}
     >
       <body className="min-h-screen bg-background font-body text-accent antialiased">

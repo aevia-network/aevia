@@ -1,61 +1,30 @@
 import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
+import { isLocale } from '@/i18n/config';
+import { getDictionary } from '@/i18n/get-dictionary';
+import { localePath } from '@/i18n/navigation';
 import { MeshDot } from '@aevia/ui';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-static';
 
-const PORTALS = [
-  {
-    index: '01',
-    slug: 'whitepaper',
-    href: '/whitepaper',
-    blurb:
-      '17 páginas compiladas de 6 RFCs. arquitetura, identidade, persistência, AUP, governança, economia.',
-  },
-  {
-    index: '02',
-    slug: 'spec',
-    href: '/spec',
-    blurb:
-      '6 RFCs normativos no estilo IETF. manifesto schema, content addressing, autenticação, AUP, persistence pool.',
-  },
-  {
-    index: '03',
-    slug: 'manifesto',
-    href: '/manifesto',
-    blurb: 'por que construímos o que construímos, na voz do fundador, em português e inglês.',
-  },
-];
+export default async function Landing({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+  const dict = getDictionary(locale);
+  const { landing } = dict;
+  const pathname = `/${locale}`;
 
-const ROADMAP = [
-  {
-    label: 'shipped',
-    milestone: '2026-04 · hello live end-to-end',
-    blurb: 'whip + whep validados, manifesto assinado, content registry em sepolia.',
-  },
-  {
-    label: 'in flight',
-    milestone: '2026-04 · content registry + manifestos',
-    blurb: 'cid canonicalization via webhook, fetch com auto-verificação no client.',
-  },
-  {
-    label: 'next',
-    milestone: '2026-Q2 · p2p media loader + risk score',
-    blurb: 'integração libp2p no viewer, rfc-6 risk score publicado e ancorado.',
-  },
-];
-
-export default function Landing() {
   return (
     <>
-      <Nav />
+      <Nav locale={locale} dict={dict} pathname={pathname} />
 
       <main className="mx-auto max-w-[1440px] px-12">
         <section className="pt-[200px] pb-[160px]">
           <h1 className="max-w-[1200px] font-headline text-[96px] font-bold leading-[1.05] tracking-tight">
-            persistência não implica distribuição
+            {landing.hero.titleBefore}
             <span className="inline-flex translate-y-3 items-center pl-1">
               <span className="pr-1">.</span>
               <MeshDot />
@@ -63,17 +32,15 @@ export default function Landing() {
           </h1>
 
           <p className="mt-10 max-w-[68ch] text-xl leading-[1.7] text-on-surface-variant">
-            vídeo soberano para criadores silenciados. o protocolo aevia ancora manifestos em base
-            l2 e paga nós de persistência em cUSDC para manter cópias disponíveis quando cdns
-            comerciais falham.
+            {landing.hero.subtitle}
           </p>
         </section>
 
         <section className="border-t border-primary-dim/30">
-          {PORTALS.map((portal) => (
+          {landing.portals.map((portal) => (
             <Link
               key={portal.slug}
-              href={portal.href}
+              href={localePath(locale, portal.href)}
               className="group grid grid-cols-[280px_1fr] items-start gap-16 border-b border-primary-dim/30 py-12 transition-colors hover:bg-surface-low/40"
             >
               <div className="flex items-center gap-3 font-label text-sm">
@@ -91,7 +58,7 @@ export default function Landing() {
         </section>
 
         <section className="grid grid-cols-3 gap-12 py-[120px]">
-          {ROADMAP.map((column) => (
+          {landing.roadmap.map((column) => (
             <div key={column.label} className="flex flex-col gap-4">
               <span className="font-label text-[13px] tracking-[0.04em] text-tertiary">
                 {column.label}
@@ -104,19 +71,19 @@ export default function Landing() {
 
         <section className="flex flex-col items-center gap-6 border-t border-primary-dim/30 py-[120px] text-center">
           <p className="max-w-[36ch] font-headline text-[36px] font-bold leading-[1.2] tracking-tight">
-            aevia não distribui sem os nós de persistência. seja um.
+            {landing.closing.headline}
           </p>
           <Link
-            href="/providers"
+            href={localePath(locale, '/providers')}
             className="inline-flex items-center gap-2 font-label text-base text-primary-dim transition-colors hover:text-primary"
           >
-            tornar-se um provider node
+            {landing.closing.cta}
             <ArrowRight className="h-4 w-4" strokeWidth={1.5} />
           </Link>
         </section>
       </main>
 
-      <Footer />
+      <Footer locale={locale} dict={dict} />
     </>
   );
 }
