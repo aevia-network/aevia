@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 
@@ -107,6 +108,23 @@ func (d *DHT) Close() error {
 		return nil
 	}
 	return d.ipfs.Close()
+}
+
+// Provide announces to the DHT that this node serves the content identified
+// by cidStr. brdcst=true instructs kad-dht to propagate the provider record
+// to the closest peers to the CID key — the canonical behavior.
+func (d *DHT) Provide(ctx context.Context, cidStr string) error {
+	if d.ipfs == nil {
+		return errors.New("dht: not initialized")
+	}
+	c, err := cid.Parse(cidStr)
+	if err != nil {
+		return fmt.Errorf("dht: parse cid %q: %w", cidStr, err)
+	}
+	if err := d.ipfs.Provide(ctx, c, true); err != nil {
+		return fmt.Errorf("dht: provide %s: %w", cidStr, err)
+	}
+	return nil
 }
 
 func toKadMode(m Mode) dht.ModeOpt {
