@@ -146,10 +146,32 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
         stream: streamRef.current,
         did: isAeviaMesh ? apiLive.creatorDid : undefined,
         onConnectionStateChange: (s) => {
-          if (s === 'connected') setStatus('live');
-          if (s === 'failed' || s === 'disconnected' || s === 'closed') {
+          // WebRTC RTCPeerConnection state machine:
+          //   - `connected`: stream is flowing — show "live"
+          //   - `disconnected`: TRANSIENT (NIC blip, ICE roam, brief packet
+          //     loss). Per W3C spec the state can transition back to
+          //     `connected` without intervention. We surface a soft warning
+          //     instead of marking error, so the broadcaster knows the
+          //     network coughed but the recording keeps going.
+          //   - `failed`: terminal — ICE permanently failed, show error
+          //   - `closed`: intentional teardown (stop button or unmount)
+          //
+          // Previously we collapsed `disconnected` into the same error
+          // bucket as `failed`, producing the false alarm reported in
+          // 2026-04-18 where the live stayed up on the viewer end while
+          // the broadcaster UI claimed "erro: conexão disconnected".
+          if (s === 'connected') {
+            setStatus('live');
+            setErrorMsg(null);
+          } else if (s === 'disconnected') {
+            // Don't flip to error — keep status `'live'` so the UI shape is
+            // preserved. The WHEP viewers don't see anything; the broadcaster
+            // just gets a non-fatal note. If `failed` arrives later, the
+            // branch below catches it.
+            setErrorMsg('conexão instável — aguardando reconexão automática');
+          } else if (s === 'failed' || s === 'closed') {
             setStatus('error');
-            setErrorMsg(`conexão ${s}`);
+            setErrorMsg(`conexão ${s === 'failed' ? 'falhou' : 'encerrada'}`);
           }
         },
       });
