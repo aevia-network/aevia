@@ -1,8 +1,5 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   AEVIA_CHAIN_ID_MAINNET,
   AEVIA_CHAIN_ID_SEPOLIA,
@@ -16,13 +13,20 @@ import {
   useWallets,
 } from '@aevia/auth/client';
 import { PermanenceStrip } from '@aevia/ui';
-import { Anchor, Check, Loader2, Pencil, Radio, Trash2, X } from 'lucide-react';
+import { Anchor, Check, Loader2, Pencil, Play, Radio, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { http, createPublicClient, encodeFunctionData, keccak256 as viemKeccak256 } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import { deleteLiveAction, renameLiveAction } from '../actions';
+
+const STREAM_CUSTOMER = 'customer-ysi6k7bkk9rfd5sa';
+
+function thumbnailFor(recordingUid?: string): string | null {
+  if (!recordingUid) return null;
+  return `https://${STREAM_CUSTOMER}.cloudflarestream.com/${recordingUid}/thumbnails/thumbnail.jpg?time=1s&height=240`;
+}
 
 export interface LiveRowData {
   uid: string;
@@ -343,165 +347,195 @@ export function LiveRow({ live }: { live: LiveRowData }) {
     }
   };
 
-  const registerChip = (() => {
-    if (registerState.kind === 'success') {
-      return (
-        <Badge variant="outline" className="font-label text-[10px] lowercase tracking-wide">
-          <Anchor className="mr-1 size-3" />
-          bloco {registerState.block} · {shortAddress(registerState.txHash, 6, 4)}
-        </Badge>
-      );
-    }
-    if (registerState.kind === 'error') {
-      return (
-        <Badge
-          variant="outline"
-          className="font-label text-[10px] lowercase tracking-wide text-danger"
-          title={registerState.message}
-        >
-          falha ao registrar
-        </Badge>
-      );
-    }
-    return null;
-  })();
+  const thumb = thumbnailFor(live.recordingVideoUid);
+  const isLive = live.state === 'connected';
 
   return (
-    <Card>
-      <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {live.state === 'connected' ? (
-            <Badge variant="live" className="font-label tracking-wide">
-              <Radio className="mr-1 size-3" /> ao vivo
-            </Badge>
+    <article className="flex flex-col gap-3 rounded-md bg-surface-container p-4">
+      {/* Top row: thumbnail · title block · primary actions */}
+      <div className="flex items-start gap-3">
+        {/* Thumbnail (or placeholder when no recording yet) */}
+        <Link
+          href={`/live/${live.uid}`}
+          aria-label="assistir"
+          className="group relative size-16 shrink-0 overflow-hidden rounded-md bg-surface-high"
+        >
+          {thumb ? (
+            <img
+              src={thumb}
+              alt=""
+              loading="lazy"
+              className="size-full object-cover transition-opacity group-hover:opacity-80"
+            />
           ) : (
-            <Badge variant="outline" className="font-label tracking-wide">
-              encerrada
-            </Badge>
+            <div className="flex size-full items-center justify-center text-on-surface/30">
+              <Radio className="size-5" aria-hidden />
+            </div>
           )}
-          <div className="min-w-0 flex-1">
-            {editing ? (
-              <form
-                action={(formData) => {
-                  formData.set('uid', live.uid);
-                  formData.set('name', draft);
-                  void renameLiveAction(formData);
+          <span className="absolute inset-0 flex items-center justify-center bg-surface-lowest/40 opacity-0 transition-opacity group-hover:opacity-100">
+            <Play className="size-5 text-on-surface" aria-hidden />
+          </span>
+          {isLive && (
+            <span className="absolute top-1 left-1 inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-0.5 font-label text-[8px] text-on-primary lowercase">
+              <span className="size-1 animate-pulse rounded-full bg-on-primary" />
+              live
+            </span>
+          )}
+        </Link>
+
+        {/* Title block */}
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {editing ? (
+            <form
+              action={(formData) => {
+                formData.set('uid', live.uid);
+                formData.set('name', draft);
+                void renameLiveAction(formData);
+                setEditing(false);
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                ref={inputRef}
+                type="text"
+                name="name"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={120}
+                className="min-w-0 flex-1 rounded-md bg-surface-high px-2.5 py-1.5 font-body text-on-surface text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <button
+                type="submit"
+                aria-label="salvar"
+                className="rounded-full p-1.5 text-primary-dim transition-colors hover:bg-surface-high hover:text-primary"
+              >
+                <Check className="size-3.5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label="cancelar"
+                onClick={() => {
+                  setDraft(live.name);
                   setEditing(false);
                 }}
-                className="flex items-center gap-2"
+                className="rounded-full p-1.5 text-on-surface/50 transition-colors hover:bg-surface-high hover:text-on-surface"
               >
-                <input
-                  ref={inputRef}
-                  type="text"
-                  name="name"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  maxLength={120}
-                  className="min-w-0 flex-1 rounded bg-surface-high px-2 py-1 font-label text-sm text-on-surface focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                  aria-label="salvar"
-                  className="px-2"
-                >
-                  <Check className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label="cancelar"
-                  className="px-2"
-                  onClick={() => {
-                    setDraft(live.name);
-                    setEditing(false);
-                  }}
-                >
-                  <X className="size-3.5" />
-                </Button>
-              </form>
-            ) : (
-              <div className="flex items-center gap-2">
-                <p className="truncate font-medium text-sm">{live.name || 'sem título'}</p>
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  aria-label="renomear"
-                  className="text-on-surface-variant transition-colors hover:text-accent"
-                >
-                  <Pencil className="size-3.5" />
-                </button>
-              </div>
-            )}
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <PermanenceStrip
-                layers={live.state === 'connected' ? ['providers', 'edge'] : ['edge']}
-                width={80}
-              />
-              <p className="font-label text-[10px] text-on-surface-variant">
-                {createdLabel} · {live.uid.slice(0, 8)}
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className="truncate font-headline font-medium text-on-surface text-sm lowercase">
+                {live.name || 'sem título'}
               </p>
-              {registerChip}
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label="renomear"
+                className="text-on-surface/40 transition-colors hover:text-on-surface"
+              >
+                <Pencil className="size-3" aria-hidden />
+              </button>
             </div>
+          )}
+
+          {/* Permanence strip + meta */}
+          <div className="flex flex-wrap items-center gap-2">
+            <PermanenceStrip layers={isLive ? ['providers', 'edge'] : ['edge']} width={64} />
+            <p className="font-mono text-[10px] text-on-surface/40">
+              {createdLabel} · {live.uid.slice(0, 8)}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {canRegister && sponsorship.kind === 'available' && (
-            <Button
+
+        {/* Right-aligned secondary actions */}
+        <div className="flex shrink-0 items-center gap-1">
+          <Link
+            href={`/live/${live.uid}`}
+            className="rounded-full p-2 text-on-surface/60 transition-colors hover:bg-surface-high hover:text-on-surface"
+            aria-label="assistir"
+            title="assistir"
+          >
+            <Play className="size-4" aria-hidden />
+          </Link>
+          <form action={deleteLiveAction} onSubmit={confirmAndDelete}>
+            <input type="hidden" name="uid" value={live.uid} />
+            <button
+              type="submit"
+              aria-label="apagar"
+              title="apagar"
+              className="rounded-full p-2 text-on-surface/40 transition-colors hover:bg-danger/10 hover:text-danger"
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* On-chain row: terminal-style anchor chip OR register CTAs */}
+      {registerState.kind === 'success' && (
+        <div className="flex items-center gap-2 rounded-md bg-surface-lowest px-3 py-2 font-mono text-[10px] text-on-surface/60">
+          <Anchor className="size-3 shrink-0 text-primary-dim" aria-hidden />
+          <span className="lowercase">ancorado · bloco</span>
+          <span className="text-on-surface">{registerState.block}</span>
+          <span className="text-on-surface/30">·</span>
+          <span className="truncate">{shortAddress(registerState.txHash, 6, 4)}</span>
+        </div>
+      )}
+
+      {registerState.kind === 'running' && (
+        <div className="flex items-center gap-2 rounded-md bg-surface-lowest px-3 py-2 font-mono text-[10px] text-on-surface/60">
+          <Loader2 className="size-3 shrink-0 animate-spin text-primary-dim" aria-hidden />
+          <span className="lowercase">
+            {registerState.step === 'nonce' && 'lendo nonce on-chain…'}
+            {registerState.step === 'sign' && 'assinando manifesto eip-712…'}
+            {registerState.step === 'send' && 'enviando transação…'}
+            {registerState.step === 'confirm' && 'aguardando confirmação…'}
+            {registerState.step === 'persist' && 'gravando meta…'}
+          </span>
+        </div>
+      )}
+
+      {registerState.kind === 'error' && (
+        <div
+          className="flex items-center gap-2 rounded-md bg-surface-lowest px-3 py-2 font-mono text-[10px] text-danger"
+          title={registerState.message}
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-danger" />
+          <span className="lowercase">falha ao registrar — toque pra tentar de novo</span>
+        </div>
+      )}
+
+      {canRegister && (
+        <div className="flex flex-wrap items-center gap-2">
+          {sponsorship.kind === 'available' && (
+            <button
               type="button"
-              variant="default"
-              size="sm"
-              className="lowercase"
               onClick={handleRegisterSponsored}
               disabled={!walletsReady}
               title="aevia paga o gás desta vez"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 font-label font-medium text-on-primary text-xs lowercase transition-opacity hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Anchor className="size-3.5" />
+              <Anchor className="size-3.5" aria-hidden />
               registrar on-chain · grátis
-            </Button>
+            </button>
           )}
-          {canRegister && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="lowercase"
-              onClick={handleRegister}
-              disabled={!walletsReady}
-              title={
-                sponsorship.kind === 'exhausted'
-                  ? 'patrocínio esgotado — registre pagando o gás'
-                  : 'registre pagando o próprio gás'
-              }
-            >
-              <Anchor className="size-3.5" />
-              pagar eu mesmo
-            </Button>
-          )}
-          {registerState.kind === 'running' && (
-            <Badge variant="outline" className="font-label text-[10px] lowercase tracking-wide">
-              <Loader2 className="mr-1 size-3 animate-spin" />
-              {registerState.step === 'nonce' && 'lendo nonce'}
-              {registerState.step === 'sign' && 'assinando'}
-              {registerState.step === 'send' && 'enviando'}
-              {registerState.step === 'confirm' && 'confirmando'}
-              {registerState.step === 'persist' && 'gravando meta'}
-            </Badge>
-          )}
-          <Button asChild variant="outline" size="sm" className="lowercase">
-            <Link href={`/live/${live.uid}`}>assistir</Link>
-          </Button>
-          <form action={deleteLiveAction} onSubmit={confirmAndDelete}>
-            <input type="hidden" name="uid" value={live.uid} />
-            <Button type="submit" variant="destructive" size="sm" className="lowercase">
-              <Trash2 className="size-3.5" />
-              apagar
-            </Button>
-          </form>
+          <button
+            type="button"
+            onClick={handleRegister}
+            disabled={!walletsReady}
+            title={
+              sponsorship.kind === 'exhausted'
+                ? 'patrocínio esgotado — registre pagando o próprio gás'
+                : 'registre pagando o próprio gás'
+            }
+            className="inline-flex items-center gap-1.5 rounded-md bg-surface-high px-3 py-2 font-label font-medium text-on-surface/80 text-xs lowercase transition-colors hover:bg-surface-highest hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Anchor className="size-3.5" aria-hidden />
+            pagar eu mesmo
+          </button>
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </article>
   );
 }

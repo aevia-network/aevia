@@ -6,11 +6,24 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 /**
- * Persistent bottom navigation. Five slots mirroring the Stitch canonical:
- * início, descobrir, ao vivo (elevated center), criadores, perfil.
+ * Persistent bottom navigation. Five slots mirroring the Stitch canonical
+ * harmonized chrome:
  *
- * Rendered per-page in Sprint 2; will fold into a shared `AppShell` when
- * the Home Feed pass introduces a typed top-chrome variants layer.
+ *   início · descobrir · ao vivo (elevated center) · criadores · perfil
+ *
+ * Slot routing notes:
+ * - "perfil" → `/dashboard` (the creator studio). The Stitch wallet canonical
+ *   `41894518677145719b70b7c1350f9ff7` defines wallet as a sub-route of the
+ *   profile surface, so the studio is the perfil entry and `/wallet` is
+ *   reached from inside it. The `active` predicate covers both routes so the
+ *   slot stays highlighted when the viewer drills into the wallet.
+ * - "criadores" → `/creators` (dedicated index of every creator on the
+ *   network, grouped by 0x address until the handle registry ships). The
+ *   `active` predicate also covers `/creator/[address]` so the slot stays
+ *   highlighted when the viewer drills into a single creator profile.
+ *
+ * Rendered per-page in Sprint 2; will fold into a shared `AppShell` when the
+ * Home Feed pass introduces a typed top-chrome variants layer.
  */
 export function BottomNav() {
   const pathname = usePathname();
@@ -35,10 +48,18 @@ export function BottomNav() {
           ao vivo
         </span>
       </div>
-      <NavButton label="criadores" href="/discover" active={pathname.startsWith('/creator/')}>
+      <NavButton
+        label="criadores"
+        href="/creators"
+        active={pathname === '/creators' || pathname.startsWith('/creator/')}
+      >
         <Users className="size-6" aria-hidden />
       </NavButton>
-      <NavButton label="perfil" href="/wallet" active={pathname === '/wallet'}>
+      <NavButton
+        label="perfil"
+        href="/dashboard"
+        active={pathname === '/dashboard' || pathname === '/wallet'}
+      >
         <User className="size-6" aria-hidden />
       </NavButton>
     </nav>
