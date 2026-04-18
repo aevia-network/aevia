@@ -98,7 +98,7 @@ function TopChrome({ viewer }: { viewer: FeedViewer | null }) {
               className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 font-label text-xs text-on-surface lowercase transition-colors hover:bg-surface-high"
             >
               <CreditCard className="size-4 text-secondary" aria-hidden />
-              20 créditos
+              20 créditos · em breve
             </Link>
           ) : (
             <Link

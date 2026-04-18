@@ -396,7 +396,20 @@ export function PlayerScreen(props: PlayerScreenProps) {
             registerTxHash={props.registerTxHash}
           />
 
-          <ReactionStrip counts={MOCK_REACTION_COUNTS} className="flex-wrap" />
+          <section aria-labelledby="reactions-heading" className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <h2
+                id="reactions-heading"
+                className="font-headline font-semibold text-base text-on-surface lowercase"
+              >
+                reações
+              </h2>
+              <span className="font-label text-[10px] text-on-surface/50 uppercase tracking-[0.15em]">
+                amostra · sprint 3
+              </span>
+            </div>
+            <ReactionStrip counts={MOCK_REACTION_COUNTS} className="flex-wrap" />
+          </section>
 
           <ChatBlock />
         </div>
