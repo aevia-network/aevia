@@ -1,4 +1,4 @@
-import { getServerEnv } from '../env';
+import { clientEnv, getServerEnv } from '../env';
 import type {
   CloudflareStreamApiEnvelope,
   LiveInput,
@@ -41,7 +41,7 @@ export async function createLiveInput(opts: {
   title?: string;
   deleteRecordingAfterDays?: number;
 }): Promise<LiveInput> {
-  const isProd = process.env.NEXT_PUBLIC_APP_ENV === 'production';
+  const isProd = clientEnv.appEnv === 'production';
   const autoDelete = opts.deleteRecordingAfterDays ?? (isProd ? undefined : 30);
   const nameSlug = opts.creatorDisplayName.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 16) || 'aevia';
 

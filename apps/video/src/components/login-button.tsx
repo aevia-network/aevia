@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { safeNextPath } from '@/lib/safe-next';
 import { useLogin, usePrivy } from '@aevia/auth/client';
 import { useRef } from 'react';
 
@@ -34,8 +35,7 @@ export function LoginButton({
     onComplete: () => {
       if (navigatedRef.current) return;
       navigatedRef.current = true;
-      const dest = next?.startsWith('/') ? next : '/dashboard';
-      window.location.replace(dest);
+      window.location.replace(safeNextPath(next, '/dashboard'));
     },
     onError: (err) => {
       // User dismissed the modal — not a failure, don't log.

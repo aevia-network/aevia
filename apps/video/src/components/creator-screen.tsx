@@ -1,6 +1,8 @@
 'use client';
 
 import { BottomNav } from '@/components/bottom-nav';
+import { explorerAddressUrl } from '@/lib/chain';
+import { formatDateTimePtBR } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { PermanenceStrip, VigilChip } from '@aevia/ui';
 import { ArrowLeft, Lock, Menu, Search, Share2, Shield, Terminal } from 'lucide-react';
@@ -187,7 +189,7 @@ export function CreatorScreen({
             </span>
             <span className="text-on-surface/20">•</span>
             <a
-              href={`https://sepolia.basescan.org/address/${address}`}
+              href={explorerAddressUrl(address)}
               target="_blank"
               rel="noreferrer"
               className="font-mono text-[10px] text-primary hover:underline"
@@ -280,7 +282,7 @@ export function CreatorScreen({
         <footer className="mb-12 flex flex-col items-center gap-6 border-surface-container border-t px-6 py-12">
           <div className="flex flex-col items-center gap-2">
             <a
-              href={`https://sepolia.basescan.org/address/${address}`}
+              href={explorerAddressUrl(address)}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 font-label text-primary text-xs hover:underline"
@@ -407,12 +409,7 @@ function VideoCard({ live }: { live: CreatorLive }) {
           ) : (
             <span>aguardando âncora on-chain</span>
           )}
-          <span>
-            {new Intl.DateTimeFormat('pt-BR', {
-              dateStyle: 'short',
-              timeStyle: 'short',
-            }).format(new Date(live.createdISO))}
-          </span>
+          <span>{formatDateTimePtBR(live.createdISO)}</span>
         </div>
       </div>
     </Link>

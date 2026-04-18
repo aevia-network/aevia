@@ -1,6 +1,7 @@
 import { Providers } from '@/components/providers';
 import { RegisterServiceWorker } from '@/components/register-sw';
 import { UploadBanner } from '@/components/upload-banner';
+import { clientEnv } from '@/lib/env';
 import type { Metadata, Viewport } from 'next';
 import { Geist, Inter, Sora } from 'next/font/google';
 import type { ReactNode } from 'react';
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
   title: 'aevia — vídeo sem intermediários',
   description:
     'live de baixa latência, vod automático, clips virais. seu conteúdo, sua audiência, seu protocolo.',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
+  metadataBase: new URL(clientEnv.appUrl),
   applicationName: 'aevia',
   appleWebApp: {
     capable: true,

@@ -1,6 +1,7 @@
 'use client';
 
-import { useLogin, usePrivy } from '@aevia/auth/client';
+import { safeNextPath } from '@/lib/safe-next';
+import { appChainId, useLogin, usePrivy } from '@aevia/auth/client';
 import { MeshDot } from '@aevia/ui';
 import { Apple, Fingerprint, HeartHandshake, Lock, Mail, Network, X } from 'lucide-react';
 import Image from 'next/image';
@@ -27,8 +28,7 @@ export function SignInScreen({ next }: { next?: string }) {
     onComplete: () => {
       if (navigatedRef.current) return;
       navigatedRef.current = true;
-      const dest = next?.startsWith('/') ? next : '/dashboard';
-      window.location.replace(dest);
+      window.location.replace(safeNextPath(next, '/dashboard'));
     },
     onError: (err) => {
       // User dismissed the modal — not a failure, don't log.
@@ -157,7 +157,7 @@ export function SignInScreen({ next }: { next?: string }) {
         </div>
 
         <p className="mt-4 px-6 text-center font-label text-[10px] text-on-surface/30 tracking-[0.02em] lowercase">
-          criação de carteira embutida via privy · did:pkh:eip155:8453:…
+          criação de carteira embutida via privy · did:pkh:eip155:{appChainId()}:…
         </p>
       </div>
 

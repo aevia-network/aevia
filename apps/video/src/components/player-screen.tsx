@@ -1,6 +1,7 @@
 'use client';
 
 import { BottomNav } from '@/components/bottom-nav';
+import { explorerTxUrl } from '@/lib/chain';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
 import { PermanenceStrip, PresenceRow, ReactionStrip, VigilChip } from '@aevia/ui';
 import Hls from 'hls.js';
@@ -189,7 +190,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
   const isLivePlaying = mode === 'live' && liveStatus === 'playing';
   const isVodPlaying = mode === 'vod' && vodStatus === 'playing';
-  const elapsedLabel = formatTimeSince(props.startedISO);
+  const elapsedLabel = useElapsedSince(props.startedISO);
 
   return (
     <div className="min-h-screen pb-28">
@@ -265,6 +266,22 @@ function formatTimeSince(iso: string): string {
   if (hours < 24) return `começou há ${hours} h`;
   const days = Math.floor(hours / 24);
   return `há ${days} ${days === 1 ? 'dia' : 'dias'}`;
+}
+
+/**
+ * React-friendly variant: returns an empty string on the first server render
+ * so the SSR HTML matches CSR (avoids React hydration warnings caused by
+ * `Date.now()`-based labels), then populates the real value after mount and
+ * refreshes every minute so the elapsed time stays accurate.
+ */
+function useElapsedSince(iso: string): string {
+  const [label, setLabel] = useState('');
+  useEffect(() => {
+    setLabel(formatTimeSince(iso));
+    const id = setInterval(() => setLabel(formatTimeSince(iso)), 60_000);
+    return () => clearInterval(id);
+  }, [iso]);
+  return label;
 }
 
 function initials(name: string): string {
@@ -515,6 +532,7 @@ function TitleBlock({
   isLive: boolean;
 }) {
   const creatorHref = creatorAddress ? `/creator/${creatorAddress}` : '/discover';
+  const elapsed = useElapsedSince(startedISO);
   return (
     <section aria-labelledby="player-title" className="flex flex-col gap-2">
       <div className="flex items-start gap-2">
@@ -531,7 +549,7 @@ function TitleBlock({
           {creatorDisplayName}
         </Link>
         <span aria-hidden> · </span>
-        {isLive ? formatTimeSince(startedISO) : 'replay'}
+        {isLive ? elapsed : 'replay'}
       </p>
     </section>
   );
@@ -601,7 +619,7 @@ function PermanenceBlock({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="uppercase tracking-wider">bloco</span>
             <a
-              href={`https://sepolia.basescan.org/tx/${registerTxHash}`}
+              href={explorerTxUrl(registerTxHash ?? '')}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-primary-dim hover:text-primary"

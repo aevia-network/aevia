@@ -1,9 +1,11 @@
 'use client';
 
+import { appChain } from '@/lib/chain';
+import { streamThumbnailUrl } from '@/lib/cloudflare/stream-urls';
+import { formatDateTimePtBR } from '@/lib/format';
 import {
-  AEVIA_CHAIN_ID_MAINNET,
-  AEVIA_CHAIN_ID_SEPOLIA,
   CONTENT_REGISTRY_ABI,
+  appChainId,
   buildRegisterContentTypedData,
   contentRegistryAddress,
   shortAddress,
@@ -18,15 +20,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { http, createPublicClient, encodeFunctionData, keccak256 as viemKeccak256 } from 'viem';
-import { base, baseSepolia } from 'viem/chains';
 import { deleteLiveAction, renameLiveAction } from '../actions';
-
-const STREAM_CUSTOMER = 'customer-ysi6k7bkk9rfd5sa';
-
-function thumbnailFor(recordingUid?: string): string | null {
-  if (!recordingUid) return null;
-  return `https://${STREAM_CUSTOMER}.cloudflarestream.com/${recordingUid}/thumbnails/thumbnail.jpg?time=1s&height=240`;
-}
 
 export interface LiveRowData {
   uid: string;
@@ -51,21 +45,11 @@ type RegisterState =
 
 type SponsorshipState = { kind: 'available' } | { kind: 'exhausted'; limit: number; used: number };
 
-function appChain() {
-  return process.env.NEXT_PUBLIC_APP_ENV === 'production' ? base : baseSepolia;
-}
-
-function appChainId(): number {
-  return process.env.NEXT_PUBLIC_APP_ENV === 'production'
-    ? AEVIA_CHAIN_ID_MAINNET
-    : AEVIA_CHAIN_ID_SEPOLIA;
-}
-
 export function LiveRow({ live }: { live: LiveRowData }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(live.name);
   const inputRef = useRef<HTMLInputElement>(null);
-  const createdLabel = new Date(live.created).toLocaleString('pt-BR');
+  const createdLabel = formatDateTimePtBR(live.created);
 
   const router = useRouter();
   const { wallets, ready: walletsReady } = useWallets();
@@ -347,7 +331,7 @@ export function LiveRow({ live }: { live: LiveRowData }) {
     }
   };
 
-  const thumb = thumbnailFor(live.recordingVideoUid);
+  const thumb = streamThumbnailUrl(live.recordingVideoUid, { height: 240 });
   const isLive = live.state === 'connected';
 
   return (

@@ -1,4 +1,5 @@
 import { SignInScreen } from '@/components/signin-screen';
+import { safeNextPath } from '@/lib/safe-next';
 import { readAeviaSession } from '@aevia/auth/server';
 import { redirect } from 'next/navigation';
 
@@ -13,7 +14,7 @@ export default async function LandingPage({
   const { next } = await searchParams;
 
   if (session) {
-    redirect(next?.startsWith('/') ? next : '/feed');
+    redirect(safeNextPath(next, '/feed'));
   }
 
   return <SignInScreen next={next} />;

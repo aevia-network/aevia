@@ -1,11 +1,12 @@
 'use client';
 
+import { clientEnv } from '@/lib/env';
 import { AeviaPrivyProvider } from '@aevia/auth/client';
 import type { ReactNode } from 'react';
 import { UploadProvider } from './upload-context';
 
 export function Providers({ children }: { children: ReactNode }) {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  const appId = clientEnv.privyAppId;
   // Fail-open rendering when Privy is not configured so that the build can
   // complete without live credentials; the server session layer will return
   // null in that mode, pushing users through the landing page.

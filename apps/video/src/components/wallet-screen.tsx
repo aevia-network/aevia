@@ -1,6 +1,7 @@
 'use client';
 
 import { BottomNav } from '@/components/bottom-nav';
+import { explorerAddressUrl } from '@/lib/chain';
 import { cn } from '@/lib/utils';
 import {
   ArrowDownToLine,
@@ -268,7 +269,7 @@ export function WalletScreen({ did, address, shortAddress, rpcUrl }: WalletScree
               </p>
             </div>
             <a
-              href={`https://sepolia.basescan.org/address/${address}`}
+              href={explorerAddressUrl(address)}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 font-label text-[10px] text-primary transition-colors hover:text-primary-dim"

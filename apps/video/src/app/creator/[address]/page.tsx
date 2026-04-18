@@ -1,5 +1,6 @@
 import { type CreatorLive, CreatorScreen } from '@/components/creator-screen';
 import { listLiveInputs } from '@/lib/cloudflare/stream-client';
+import { streamThumbnailUrl } from '@/lib/cloudflare/stream-urls';
 import { addressToDid, shortAddress } from '@aevia/auth';
 import { readAeviaSession } from '@aevia/auth/server';
 import { notFound } from 'next/navigation';
@@ -62,9 +63,7 @@ export default async function CreatorPage({
   const lives: CreatorLive[] = owned.map((l) => {
     const durationSeconds = l.status?.current?.state === 'connected' ? null : null;
     const recordingUid = l.meta?.recordingVideoUid;
-    const thumbnailUrl = recordingUid
-      ? `https://customer-ysi6k7bkk9rfd5sa.cloudflarestream.com/${recordingUid}/thumbnails/thumbnail.jpg?time=1s&height=360`
-      : null;
+    const thumbnailUrl = streamThumbnailUrl(recordingUid, { height: 360 });
 
     return {
       uid: l.uid,

@@ -1,16 +1,15 @@
+import { appChain } from '@/lib/chain';
 import { getRelayerEnv } from '@/lib/env';
 import {
-  AEVIA_CHAIN_ID_MAINNET,
-  AEVIA_CHAIN_ID_SEPOLIA,
   CONTENT_REGISTRY_ABI,
   REGISTER_CONTENT_TYPES,
+  appChainId,
   contentRegistryAddress,
 } from '@aevia/auth';
 import { readAeviaSession } from '@aevia/auth/server';
 import { NextResponse } from 'next/server';
 import { http, createPublicClient, createWalletClient, verifyTypedData } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { base, baseSepolia } from 'viem/chains';
 import { persistRegistrationMeta, resolveLiveOwnership } from '../_lib/register-meta';
 
 export const runtime = 'edge';
@@ -98,16 +97,6 @@ async function incrementCount(owner: string, next: number): Promise<void> {
     return;
   }
   await kv.put(KV_KEY(owner), String(next));
-}
-
-function appChainId(): number {
-  return process.env.NEXT_PUBLIC_APP_ENV === 'production'
-    ? AEVIA_CHAIN_ID_MAINNET
-    : AEVIA_CHAIN_ID_SEPOLIA;
-}
-
-function appChain() {
-  return process.env.NEXT_PUBLIC_APP_ENV === 'production' ? base : baseSepolia;
 }
 
 const HEX40 = /^0x[0-9a-fA-F]{40}$/;

@@ -1,5 +1,6 @@
 import { BottomNav } from '@/components/bottom-nav';
 import { listLiveInputs } from '@/lib/cloudflare/stream-client';
+import { streamThumbnailUrl } from '@/lib/cloudflare/stream-urls';
 import { shortAddress } from '@aevia/auth';
 import { LiveTile, MeshDot } from '@aevia/ui';
 import { ArrowLeft, ArrowRight, Bell, Users } from 'lucide-react';
@@ -7,8 +8,6 @@ import Link from 'next/link';
 
 export const runtime = 'edge';
 export const revalidate = 0;
-
-const STREAM_CUSTOMER = 'customer-ysi6k7bkk9rfd5sa';
 
 interface LiveCard {
   uid: string;
@@ -47,9 +46,7 @@ export default async function DiscoverPage() {
     .sort((a, b) => (a.created < b.created ? 1 : -1))
     .map((l) => {
       const recordingUid = l.meta?.recordingVideoUid;
-      const thumbnailUrl = recordingUid
-        ? `https://${STREAM_CUSTOMER}.cloudflarestream.com/${recordingUid}/thumbnails/thumbnail.jpg?time=1s&height=360`
-        : null;
+      const thumbnailUrl = streamThumbnailUrl(recordingUid, { height: 360 });
       const creatorAddressRaw = (l.meta?.creatorAddress ?? l.defaultCreator ?? '').toLowerCase();
       const creatorAddress = /^0x[0-9a-f]{40}$/.test(creatorAddressRaw)
         ? (creatorAddressRaw as `0x${string}`)

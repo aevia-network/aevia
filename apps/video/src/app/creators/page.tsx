@@ -75,8 +75,15 @@ export default async function CreatorsPage() {
   const creators: CreatorCard[] = [...byAddress.entries()]
     .map(([address, v]) => ({ address, ...v }))
     .sort((a, b) => {
+      // 1) Live now creators first.
       if (a.hasLiveNow !== b.hasLiveNow) return a.hasLiveNow ? -1 : 1;
-      return b.livesCount - a.livesCount;
+      // 2) Then by lives count desc (most prolific surfaces first).
+      if (a.livesCount !== b.livesCount) return b.livesCount - a.livesCount;
+      // 3) Tiebreaker: most recently active. ISO timestamps sort
+      //    lexicographically so a string compare suffices; nulls sink last.
+      const aTs = a.lastLiveAtISO ?? '';
+      const bTs = b.lastLiveAtISO ?? '';
+      return bTs.localeCompare(aTs);
     });
 
   const liveNowCount = creators.filter((c) => c.hasLiveNow).length;

@@ -1,5 +1,6 @@
 import { FeedScreen, type LiveCard } from '@/components/feed-screen';
 import { listLiveInputs } from '@/lib/cloudflare/stream-client';
+import { streamThumbnailUrl } from '@/lib/cloudflare/stream-urls';
 import { shortAddress } from '@aevia/auth';
 import { readAeviaSession } from '@aevia/auth/server';
 
@@ -35,9 +36,7 @@ export default async function FeedPage() {
     .slice(0, 8)
     .map((l) => {
       const recordingUid = l.meta?.recordingVideoUid;
-      const thumbnailUrl = recordingUid
-        ? `https://customer-ysi6k7bkk9rfd5sa.cloudflarestream.com/${recordingUid}/thumbnails/thumbnail.jpg?time=1s&height=360`
-        : null;
+      const thumbnailUrl = streamThumbnailUrl(recordingUid, { height: 360 });
       const creatorAddress = (l.meta?.creatorAddress ?? l.defaultCreator ?? '').toLowerCase();
       return {
         uid: l.uid,

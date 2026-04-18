@@ -1,4 +1,5 @@
 import { WalletScreen } from '@/components/wallet-screen';
+import { defaultRpcUrl } from '@/lib/chain';
 import { shortAddress } from '@aevia/auth';
 import { readAeviaSession } from '@aevia/auth/server';
 import { redirect } from 'next/navigation';
@@ -24,7 +25,7 @@ export default async function WalletPage() {
       did={session.did}
       address={session.address}
       shortAddress={shortAddress(session.address)}
-      rpcUrl="https://sepolia.base.org"
+      rpcUrl={defaultRpcUrl()}
     />
   );
 }
