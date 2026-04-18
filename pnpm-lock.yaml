@@ -48,6 +48,9 @@ catalogs:
     jose:
       specifier: ^5.10.0
       version: 5.10.0
+    lucide-react:
+      specifier: ^0.468.0
+      version: 0.468.0
     next:
       specifier: ^15.1.3
       version: 15.5.15
@@ -326,6 +329,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      lucide-react:
+        specifier: 'catalog:'
+        version: 0.468.0(react@19.2.5)
       tailwind-merge:
         specifier: 'catalog:'
         version: 2.6.1

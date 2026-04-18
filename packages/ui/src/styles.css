@@ -99,6 +99,35 @@
 }
 
 /**
+ * Signature: live pulse — verdigris variant of the mesh pulse, used by <LiveTile>
+ * and other live indicators where sage is semantically wrong (sage is reserved
+ * for mesh/P2P presence).
+ */
+.aevia-live-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--color-primary-dim);
+  box-shadow: 0 0 0 0 rgb(90 143 126 / 0.7);
+  animation: aevia-live-pulse 2s infinite;
+}
+
+@keyframes aevia-live-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgb(90 143 126 / 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 5px rgb(90 143 126 / 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgb(90 143 126 / 0);
+  }
+}
+
+/**
  * Signature: permanence strip — 4 pill segments representing the Waterfall.
  * Segment colors (in order): sage (L1 local mesh), verdigris (L2 provider nodes),
  * bone @ 40% (L3 edge gateway), creamy gold (L4 cold storage).
