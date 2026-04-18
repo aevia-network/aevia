@@ -39,7 +39,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
  */
 
 type ConnectionStatus = 'idle' | 'requesting-devices' | 'ready' | 'connecting' | 'live' | 'error';
-type RankingTemplate = 'familia' | 'padrao' | 'ministerio';
+type RankingTemplate = 'comunidade' | 'padrao' | 'foco';
 type LiveBackend = 'cloudflare' | 'aevia-mesh';
 
 interface CreatedLive {
@@ -504,9 +504,9 @@ function DetailsSection({
 // ---- Curation (ranking + category) --------------------------------------
 
 const TEMPLATE_OPTIONS: readonly { kind: RankingTemplate; label: string }[] = [
-  { kind: 'familia', label: 'família' },
+  { kind: 'comunidade', label: 'comunidade' },
   { kind: 'padrao', label: 'padrão' },
-  { kind: 'ministerio', label: 'ministério' },
+  { kind: 'foco', label: 'foco' },
 ];
 
 function CurationSection({

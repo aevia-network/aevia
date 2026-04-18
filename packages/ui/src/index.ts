@@ -22,3 +22,5 @@ export { RankingSwitcher } from './components/ranking-switcher';
 export type { RankingSwitcherProps, RankingTemplate } from './components/ranking-switcher';
 export { ReactionStrip } from './components/reaction-strip';
 export type { ReactionKind, ReactionStripProps } from './components/reaction-strip';
+export { PersonasStrip, DEFAULT_PERSONAS } from './components/personas-strip';
+export type { PersonasStripProps, PersonaChip } from './components/personas-strip';

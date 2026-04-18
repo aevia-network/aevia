@@ -177,8 +177,9 @@ function ExclusionsList() {
 
 const INCENTIVES: Array<{ title: string; detail: string }> = [
   {
-    title: 'voz de criadores silenciados',
-    detail: 'jornalistas, apologetas, ministérios e educadores deplatformados em outras redes.',
+    title: 'voz de criadores deplatformados em outras redes',
+    detail:
+      'jornalistas locais, educadoras, documentaristas, gamers, makers, músicos indie, ministérios e comunidades inteiras que precisam de hosting que não muda regra da noite pro dia.',
   },
   {
     title: 'pinning subsidiado em provider nodes',
@@ -186,7 +187,8 @@ const INCENTIVES: Array<{ title: string; detail: string }> = [
   },
   {
     title: 'distribuição editorial curada',
-    detail: 'ranking e descoberta favorecem permanência ética e densidade de fé sobre engajamento.',
+    detail:
+      'ranking e descoberta favorecem permanência editorial sobre engajamento viral. quem cria coisa duradoura é favorecido, não quem clica em outrage.',
   },
   {
     title: 'transparência de moderação',
