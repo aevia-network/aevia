@@ -21,8 +21,20 @@ import (
 	"time"
 
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
+
+// RTPSink is a write-only endpoint that receives a copy of the session's
+// RTP stream. Mirror clients implement this to forward packets to
+// downstream provider nodes over libp2p streams (see internal/mirror).
+//
+// WriteRTP MUST be non-blocking for the caller: slow mirrors cannot
+// stall the ingest goroutine. Implementations buffer internally and
+// drop on backpressure.
+type RTPSink interface {
+	WriteRTP(pkt *rtp.Packet) error
+}
 
 // KeyframeRequestInterval is how often the server asks the encoder (via
 // RTCP PLI) for a fresh IDR. Chrome's WebRTC stack only emits keyframes
@@ -49,17 +61,106 @@ type Session struct {
 	hubMu    sync.RWMutex
 	videoHub *webrtc.TrackLocalStaticRTP
 	audioHub *webrtc.TrackLocalStaticRTP
+
+	// Sinks are extra write-only endpoints that receive a copy of every
+	// RTP packet alongside the hub. Mirror clients register sinks to
+	// forward packets over libp2p streams to downstream providers. The
+	// lists are separate per kind so the mirror can address video vs
+	// audio frames distinctly on the wire. Fan-out happens in
+	// TeeReadSessionTrack, after hub.WriteRTP.
+	sinkMu     sync.RWMutex
+	videoSinks []RTPSink
+	audioSinks []RTPSink
+}
+
+// AttachVideoSink registers an additional RTP endpoint that receives a
+// copy of every video packet. Idempotent-per-sink is the caller's
+// responsibility: each AddSink call adds another entry.
+func (s *Session) AttachVideoSink(sink RTPSink) {
+	s.sinkMu.Lock()
+	s.videoSinks = append(s.videoSinks, sink)
+	s.sinkMu.Unlock()
+}
+
+// AttachAudioSink is the audio counterpart of AttachVideoSink.
+func (s *Session) AttachAudioSink(sink RTPSink) {
+	s.sinkMu.Lock()
+	s.audioSinks = append(s.audioSinks, sink)
+	s.sinkMu.Unlock()
+}
+
+// fanOutVideoRTP writes pkt to every registered video sink. Errors are
+// swallowed — a slow or failing mirror must not stall the ingest loop.
+// Called by TeeReadSessionTrack after hub.WriteRTP.
+func (s *Session) fanOutVideoRTP(pkt *rtp.Packet) {
+	s.sinkMu.RLock()
+	sinks := s.videoSinks
+	s.sinkMu.RUnlock()
+	for _, sink := range sinks {
+		_ = sink.WriteRTP(pkt)
+	}
+}
+
+// fanOutAudioRTP mirrors fanOutVideoRTP for audio packets.
+func (s *Session) fanOutAudioRTP(pkt *rtp.Packet) {
+	s.sinkMu.RLock()
+	sinks := s.audioSinks
+	s.sinkMu.RUnlock()
+	for _, sink := range sinks {
+		_ = sink.WriteRTP(pkt)
+	}
+}
+
+// NewMirrorSession builds a Session with no WHIP peer connection —
+// its RTP packets arrive from a libp2p mirror stream instead. Callers
+// WriteRTP directly to the returned hubs; /whep viewers subscribe
+// exactly as they would on an origin session.
+//
+// Codec capabilities are forwarded verbatim from the origin's stream
+// header so the downstream hub advertises matching SDP parameters.
+// Pass a zero-value CodecInfo (MimeType == "") for a track kind the
+// session doesn't carry.
+//
+// The returned session has peerConn=nil; Close() becomes a pure
+// signalling operation (closes doneCh), which is correct — there is
+// no peer connection to tear down.
+func NewMirrorSession(id string, video, audio webrtc.RTPCodecCapability) (*Session, error) {
+	if id == "" {
+		return nil, errors.New("whip: mirror session requires non-empty ID")
+	}
+	s := &Session{
+		ID:        id,
+		StartedAt: time.Now(),
+		doneCh:    make(chan struct{}),
+	}
+	if video.MimeType != "" {
+		hub, err := webrtc.NewTrackLocalStaticRTP(video, "aevia-video-"+id, id)
+		if err != nil {
+			return nil, fmt.Errorf("whip: new mirror video hub: %w", err)
+		}
+		s.videoHub = hub
+	}
+	if audio.MimeType != "" {
+		hub, err := webrtc.NewTrackLocalStaticRTP(audio, "aevia-audio-"+id, id)
+		if err != nil {
+			return nil, fmt.Errorf("whip: new mirror audio hub: %w", err)
+		}
+		s.audioHub = hub
+	}
+	return s, nil
 }
 
 // Close drops the peer connection and signals session end. Idempotent.
+// Mirror sessions (peerConn == nil from birth) still signal doneCh so
+// WHEP viewers bound to them tear down cleanly.
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.peerConn == nil {
-		return nil
+	var err error
+	if s.peerConn != nil {
+		err = s.peerConn.Close()
+		s.peerConn = nil
 	}
-	err := s.peerConn.Close()
-	s.peerConn = nil
 	select {
 	case <-s.doneCh:
 	default:
@@ -461,6 +562,47 @@ func (s *Server) ActiveSessions() []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+// InjectSession registers a pre-built Session under its own ID so that
+// /whep/{id} can find it. Used by mirror.Server when it receives a
+// fan-out stream from an origin — the mirror builds a Session via
+// NewMirrorSession and injects it so viewers reach its hubs.
+//
+// OnSession callbacks are NOT fired for injected sessions: those
+// callbacks wire origin-side behaviour (CMAF segmenter, DHT announce
+// of the manifest CID) that should run once, on the origin. The
+// mirror announces the sessionCID separately via mirror.Server's own
+// lifecycle hook.
+//
+// Returns an error when the ID is already registered — mirror and
+// origin on the same node would collide on ID; this guards that.
+func (s *Server) InjectSession(sess *Session) error {
+	if sess == nil {
+		return errors.New("whip: InjectSession requires non-nil session")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.sessions[sess.ID]; exists {
+		return fmt.Errorf("whip: session %s already registered", sess.ID)
+	}
+	s.sessions[sess.ID] = sess
+	return nil
+}
+
+// RemoveSession drops a session from the registry and closes it.
+// Idempotent: calling on an unknown ID is a no-op. Mirror.Server
+// invokes this when the upstream stream closes.
+func (s *Server) RemoveSession(id string) {
+	s.mu.Lock()
+	sess, ok := s.sessions[id]
+	if ok {
+		delete(s.sessions, id)
+	}
+	s.mu.Unlock()
+	if ok {
+		_ = sess.Close()
+	}
 }
 
 // ErrSessionNotFound is returned when GetSession is called with an

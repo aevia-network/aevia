@@ -59,15 +59,38 @@ func TeeReadTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, si
 	}
 	switch track.Kind() {
 	case webrtc.RTPCodecTypeVideo:
-		return teeVideoTrack(track, hub, sink)
+		return teeVideoTrack(track, hub, nil, sink)
 	case webrtc.RTPCodecTypeAudio:
-		return teeAudioTrack(track, hub, sink)
+		return teeAudioTrack(track, hub, nil, sink)
 	default:
 		return fmt.Errorf("whip: unsupported track kind %v", track.Kind())
 	}
 }
 
-func teeVideoTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, sink FrameSink) error {
+// TeeReadSessionTrack is TeeReadTrack that ALSO fans out every RTP
+// packet to the session's registered RTPSinks (mirror clients). Use
+// this form when the node is an origin for a mirror stream. Hub is
+// resolved from the session based on track kind, matching what
+// EnsureHubFor populated.
+func TeeReadSessionTrack(track *webrtc.TrackRemote, sess *Session, sink FrameSink) error {
+	if track == nil || sess == nil || sink == nil {
+		return fmt.Errorf("whip: TeeReadSessionTrack requires track, session, and sink")
+	}
+	switch track.Kind() {
+	case webrtc.RTPCodecTypeVideo:
+		return teeVideoTrack(track, sess.VideoHub(), sess.fanOutVideoRTP, sink)
+	case webrtc.RTPCodecTypeAudio:
+		return teeAudioTrack(track, sess.AudioHub(), sess.fanOutAudioRTP, sink)
+	default:
+		return fmt.Errorf("whip: unsupported track kind %v", track.Kind())
+	}
+}
+
+// onRTP is the per-packet fan-out hook invoked after hub.WriteRTP.
+// Use nil when no additional sinks are desired.
+type onRTP func(*rtp.Packet)
+
+func teeVideoTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, tap onRTP, sink FrameSink) error {
 	depack := &codecs.H264Packet{IsAVC: false}
 	for {
 		pkt, _, err := track.ReadRTP()
@@ -82,6 +105,10 @@ func teeVideoTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, s
 			// Errors here are non-fatal — a slow consumer shouldn't
 			// kill the publisher. pion queues per-sender.
 			_ = hub.WriteRTP(pkt)
+		}
+		if tap != nil {
+			// Fan-out to mirror sinks. Same non-fatal semantics as hub.
+			tap(pkt)
 		}
 		nal, err := depack.Unmarshal(pkt.Payload)
 		if err != nil {
@@ -101,7 +128,7 @@ func teeVideoTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, s
 	}
 }
 
-func teeAudioTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, sink FrameSink) error {
+func teeAudioTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, tap onRTP, sink FrameSink) error {
 	for {
 		pkt, _, err := track.ReadRTP()
 		if err != nil {
@@ -112,6 +139,9 @@ func teeAudioTrack(track *webrtc.TrackRemote, hub *webrtc.TrackLocalStaticRTP, s
 		}
 		if hub != nil {
 			_ = hub.WriteRTP(pkt)
+		}
+		if tap != nil {
+			tap(pkt)
 		}
 		sink.OnAudioFrame(AudioFrame{
 			Opus:      append([]byte(nil), pkt.Payload...),
