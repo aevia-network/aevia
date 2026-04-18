@@ -271,6 +271,16 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 		_ = WriteCloseFrame(s.stream)
 		_ = s.stream.Close()
 		close(s.closed)
+		// Fase 2.2 — emit per-peer origin-side RTT stats when the
+		// stream ends. This is the authoritative (echo-back) number.
+		s.log.Info("mirror origin-side stats",
+			"probe_samples", s.metrics.ProbeCount(),
+			"probe_loss", s.metrics.ProbeLoss(),
+			"rtt_p50_ns", s.metrics.EchoP50Nanos(),
+			"rtt_p95_ns", s.metrics.EchoP95Nanos(),
+			"rtt_p99_ns", s.metrics.EchoP99Nanos(),
+			"rtt_ema_ns", s.metrics.EchoEMA().Nanoseconds(),
+		)
 	}()
 	dropped := 0
 	lastDropLog := time.Now()
