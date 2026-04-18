@@ -30,19 +30,24 @@ const (
 // playback needs sync — M8 MVP proves the ingest-to-segment pipe
 // works end-to-end for video, which is the harder format.
 type CMAFSegmenter struct {
-	sink SegmentSink
+	sink     SegmentSink
+	partSink PartSink // optional — nil when the sink doesn't implement PartSink
 
-	mu                sync.Mutex
-	sps               []byte
-	pps               []byte
-	initEmitted       bool
-	segmentStartTS    uint32
-	segmentHasKey     bool
-	segmentSampleBufs [][]byte
-	segmentDurations  []uint32
-	nextSegmentIndex  uint32
-	totalSegments     uint32
-	sequenceNumber    uint32
+	mu                   sync.Mutex
+	sps                  []byte
+	pps                  []byte
+	initEmitted          bool
+	segmentStartTS       uint32
+	segmentHasKey        bool
+	segmentSampleBufs    [][]byte
+	segmentDurations     []uint32
+	nextSegmentIndex     uint32
+	totalSegments        uint32
+	sequenceNumber       uint32
+	partStartTS          uint32
+	partStartSampleIdx   int
+	partIndexInSegment   uint32
+	partStartsOnKeyframe bool
 }
 
 // SegmentSink receives the init segment once, then each media segment
@@ -61,7 +66,11 @@ func NewCMAFSegmenter(sink SegmentSink) (*CMAFSegmenter, error) {
 	if sink == nil {
 		return nil, errors.New("segmenter: sink is nil")
 	}
-	return &CMAFSegmenter{sink: sink, sequenceNumber: 1}, nil
+	// If the sink opts into LL-HLS parts, pick it up via type assertion.
+	// Legacy sinks that don't implement PartSink see the same behavior
+	// as before — no parts emitted, classic 6s-only segments.
+	partSink, _ := sink.(PartSink)
+	return &CMAFSegmenter{sink: sink, partSink: partSink, sequenceNumber: 1}, nil
 }
 
 // OnVideoFrame satisfies FrameSink for video. Audio frames are ignored
@@ -137,6 +146,10 @@ func (s *CMAFSegmenter) ingestFrame(f VideoFrame) error {
 	// one rooted at this keyframe.
 	if len(s.segmentSampleBufs) == 0 {
 		s.segmentStartTS = f.Timestamp
+		s.partStartTS = f.Timestamp
+		s.partStartSampleIdx = 0
+		s.partIndexInSegment = 0
+		s.partStartsOnKeyframe = f.Keyframe
 	}
 	elapsed := f.Timestamp - s.segmentStartTS
 	if f.Keyframe && elapsed >= TargetSegmentDuration*VideoTimescale && len(s.segmentSampleBufs) > 0 {
@@ -144,6 +157,10 @@ func (s *CMAFSegmenter) ingestFrame(f VideoFrame) error {
 			return err
 		}
 		s.segmentStartTS = f.Timestamp
+		s.partStartTS = f.Timestamp
+		s.partStartSampleIdx = 0
+		s.partIndexInSegment = 0
+		s.partStartsOnKeyframe = f.Keyframe
 	}
 
 	// Per-sample duration — we don't know the next timestamp yet, so
@@ -166,7 +183,67 @@ func (s *CMAFSegmenter) ingestFrame(f VideoFrame) error {
 	if f.Keyframe {
 		s.segmentHasKey = true
 	}
+
+	// LL-HLS partial-segment emission — if the sink opted into parts and
+	// the part-accumulator has reached PartTargetDuration, emit the
+	// fragment covering samples[partStartSampleIdx..end] and advance
+	// the part cursor. We intentionally emit BEFORE the next keyframe
+	// can arrive so viewers fetching via blocking-reload get each
+	// completed part as soon as possible.
+	if s.partSink != nil {
+		partElapsed := f.Timestamp - s.partStartTS
+		if partElapsed >= PartTargetDuration*VideoTimescale {
+			if err := s.emitPartLocked(); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+// emitPartLocked builds a standalone fMP4 fragment for the samples
+// accumulated since the last part boundary and delivers it to the
+// PartSink. Advances the partStartSampleIdx + partIndexInSegment.
+// Assumes the caller holds s.mu.
+func (s *CMAFSegmenter) emitPartLocked() error {
+	if s.partSink == nil {
+		return nil
+	}
+	hi := len(s.segmentSampleBufs)
+	if s.partStartSampleIdx >= hi {
+		return nil
+	}
+	partSamples := s.segmentSampleBufs[s.partStartSampleIdx:hi]
+	partDurations := s.segmentDurations[s.partStartSampleIdx:hi]
+	// The last sample's duration is still a placeholder (set when the
+	// next frame arrives). Use a sane fallback so the fragment duration
+	// doesn't collapse to zero ticks.
+	durCopy := make([]uint32, len(partDurations))
+	copy(durCopy, partDurations)
+	if durCopy[len(durCopy)-1] == 0 {
+		durCopy[len(durCopy)-1] = uint32(VideoTimescale / 30)
+	}
+
+	bytes, totalTicks, err := buildPartSegment(s.sequenceNumber, partSamples, durCopy, s.partStartsOnKeyframe)
+	if err != nil {
+		return fmt.Errorf("emit part: %w", err)
+	}
+	s.sequenceNumber++
+
+	segIdx := s.nextSegmentIndex
+	partIdx := s.partIndexInSegment
+	independent := s.partStartsOnKeyframe
+
+	// Advance cursors BEFORE the sink call — keeps internal state
+	// consistent if the callback runs long or errors non-fatally.
+	s.partStartSampleIdx = hi
+	s.partIndexInSegment++
+	s.partStartsOnKeyframe = false // only the first part of a segment is independent
+	// The next part's start-ts is one sample-duration after the last
+	// sample in the part we just emitted.
+	s.partStartTS += totalTicks
+
+	return s.partSink.OnMediaPart(segIdx, partIdx, bytes, totalTicks, independent)
 }
 
 func (s *CMAFSegmenter) flushLocked() error {
