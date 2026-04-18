@@ -1,5 +1,6 @@
 import { TrustScreen } from '@/components/trust-screen';
-import { fetchMeshHealth } from '@/lib/mesh/health';
+import { type ProviderHealth, fetchMeshHealth } from '@/lib/mesh/health';
+import { type RoundTripResult, measureRoundTrip } from '@/lib/mesh/latency';
 import { parseProviderRegistry } from '@/lib/mesh/resolve';
 import { addressToDid, shortAddress } from '@aevia/auth';
 import { readAeviaSession } from '@aevia/auth/server';
@@ -15,10 +16,16 @@ export const revalidate = 0;
  * of the thesis. When a session is present, the "meu histórico" block renders
  * the viewer's DID; otherwise the block explains what would appear.
  *
- * The `mesh ao vivo` section materializes the thesis on the UI: every
- * registered provider's /healthz is fetched server-side in parallel so
- * viewers can see the real geographic distribution — region, coordinates,
- * RTT — instead of CDN-opaque "100+ POPs" marketing copy.
+ * Mesh section combines two live probes per provider:
+ *   1. GET /healthz — identity + geo + reachability (fetchMeshHealth).
+ *   2. 5x HEAD /latency-probe — p50/p95 RTT distribution (measureRoundTrip,
+ *      Fase 2.0 observability foundation). This is the honest "latência"
+ *      the page surfaces, NOT a single cherry-picked sample.
+ *
+ * Both probes run server-side from the edge function, in parallel across
+ * providers and sequential within a provider. Edge-to-provider RTT is a
+ * *different* number than viewer-to-provider RTT — the page annotates
+ * this clearly in the UI copy so readers don't conflate.
  */
 export default async function TrustPage() {
   const [session, mesh] = await Promise.all([
@@ -38,5 +45,15 @@ export default async function TrustPage() {
 
 async function loadMeshSnapshot() {
   const registry = parseProviderRegistry(process.env.NEXT_PUBLIC_AEVIA_PROVIDER_REGISTRY ?? '');
-  return fetchMeshHealth(registry, { timeoutMs: 2_000 });
+  const health = await fetchMeshHealth(registry, { timeoutMs: 2_000 });
+  return Promise.all(
+    health.map(async (h: ProviderHealth) => {
+      if (h.status !== 'ok') return { health: h, latency: null };
+      const latency = await measureRoundTrip(h.httpsBase, {
+        samples: 5,
+        timeoutMs: 1_500,
+      }).catch<RoundTripResult | null>(() => null);
+      return { health: h, latency };
+    }),
+  );
 }

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -200,6 +201,36 @@ func (s *Server) registerDefaults() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
+
+	// /latency-probe is a purpose-built RTT measurement endpoint —
+	// HEAD-optimised, zero body, no JSON marshal, no DB lookup, no
+	// peerstore read. Exists because /healthz encodes JSON and is
+	// noisy on the network (~120 bytes body). Rapid-fire probes from
+	// the viewer against this path converge on the *network* RTT,
+	// not "RTT + handler overhead + JSON parse".
+	//
+	// Sends two Server-Timing metrics for client-side correlation:
+	//   server_recv_ns: wall-clock nanoseconds when the handler ran
+	//   server_send_ns: wall-clock nanoseconds just before flush
+	// Client can compute one-way delay estimate when the clocks are
+	// loosely synced (NTP), or just use HTTP RTT when not.
+	//
+	// Mirror code in Fase 2.1 consumes the same Server-Timing header
+	// from mirror-to-origin probes, so origin/mirror hop RTT is
+	// measurable with the same primitive.
+	s.mux.HandleFunc("GET /latency-probe", handleLatencyProbe)
+	s.mux.HandleFunc("HEAD /latency-probe", handleLatencyProbe)
+}
+
+func handleLatencyProbe(w http.ResponseWriter, _ *http.Request) {
+	recvNS := time.Now().UnixNano()
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set(
+		"Server-Timing",
+		"server_recv_ns;desc=\"server receive wall-clock ns\";dur="+strconv.FormatInt(recvNS, 10)+
+			", server_send_ns;desc=\"server send wall-clock ns\";dur="+strconv.FormatInt(time.Now().UnixNano(), 10),
+	)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // withCORS wraps h with permissive CORS headers so browsers can reach the

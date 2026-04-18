@@ -2,6 +2,7 @@
 
 import { BottomNav } from '@/components/bottom-nav';
 import { type ProviderHealth, shortPeerId } from '@/lib/mesh/health';
+import type { RoundTripResult } from '@/lib/mesh/latency';
 import { MeshDot } from '@aevia/ui';
 import {
   ArrowLeft,
@@ -39,15 +40,26 @@ export interface TrustViewer {
   shortAddress: string;
 }
 
+/**
+ * One row of the mesh grafo — a provider's identity+geo from /healthz
+ * plus the p50/p95 RTT distribution from /latency-probe. `latency` is
+ * null when the healthz probe failed (can't measure RTT to a node we
+ * can't even reach) OR when the RTT measurement itself failed.
+ */
+export interface MeshGrafoEntry {
+  health: ProviderHealth;
+  latency: RoundTripResult | null;
+}
+
 export interface TrustScreenProps {
   viewer: TrustViewer | null;
   /**
    * Live snapshot of every registered provider in the mesh — fetched
-   * server-side from each `/healthz`. Empty array means no provider is
-   * currently registered in the viewer's peer registry env (honest: grafo
-   * ausente, não placeholder).
+   * server-side from each `/healthz` + `/latency-probe`. Empty array
+   * means no provider is currently registered in the viewer's peer
+   * registry env (honest: grafo ausente, não placeholder).
    */
-  mesh: ProviderHealth[];
+  mesh: MeshGrafoEntry[];
 }
 
 export function TrustScreen({ viewer, mesh }: TrustScreenProps) {
@@ -271,18 +283,23 @@ function OutcomeStates() {
 // ---- Mesh grafo (real, observável em tempo real) ------------------------
 
 interface MeshGrafoProps {
-  mesh: ProviderHealth[];
+  mesh: MeshGrafoEntry[];
 }
 
 /**
  * Renders every provider currently registered in the mesh with its
- * region, coordinates, RTT, and reachability status. This section is NOT
- * a mock: the data comes from each provider's live `/healthz` fetched
- * server-side at render time. An empty state explains honestly when
- * the viewer's peer registry env lists no providers.
+ * region, coordinates, p50/p95 RTT distribution (5-sample HEAD probe
+ * against /latency-probe), and reachability status. This section is
+ * NOT a mock: data comes from live probes at render time. Empty state
+ * explains honestly when the viewer's peer registry env lists no
+ * providers.
+ *
+ * RTT shown is *edge-to-provider* (our CF Pages edge function to the
+ * provider's HTTPS endpoint), not viewer-to-provider. The caveat line
+ * below the list makes that explicit.
  */
 function MeshGrafo({ mesh }: MeshGrafoProps) {
-  const reachable = mesh.filter((m) => m.status === 'ok').length;
+  const reachable = mesh.filter((m) => m.health.status === 'ok').length;
   const total = mesh.length;
 
   return (
@@ -319,21 +336,27 @@ function MeshGrafo({ mesh }: MeshGrafoProps) {
             </span>
           </div>
           <ul className="flex flex-col gap-2">
-            {mesh.map((p) => (
+            {mesh.map((entry) => (
               <li
-                key={p.httpsBase}
+                key={entry.health.httpsBase}
                 className="flex flex-col gap-1 rounded-md bg-surface-container p-3"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-label font-medium text-on-surface text-sm lowercase">
-                    {p.peerId ? shortPeerId(p.peerId) : hostOf(p.httpsBase)}
+                    {entry.health.peerId
+                      ? shortPeerId(entry.health.peerId)
+                      : hostOf(entry.health.httpsBase)}
                   </span>
-                  <ReachabilityBadge status={p.status} />
+                  <ReachabilityBadge status={entry.health.status} />
                 </div>
-                <MeshRowMeta provider={p} />
+                <MeshRowMeta provider={entry.health} latency={entry.latency} />
               </li>
             ))}
           </ul>
+          <p className="font-label text-[11px] text-on-surface/50 lowercase">
+            rtt medido do edge cloudflare pro provider, 5 amostras head /latency-probe. p50/p95 real
+            do seu navegador depende do seu trajeto de rede.
+          </p>
         </>
       )}
     </section>
@@ -357,7 +380,13 @@ function ReachabilityBadge({ status }: { status: ProviderHealth['status'] }) {
   );
 }
 
-function MeshRowMeta({ provider }: { provider: ProviderHealth }) {
+function MeshRowMeta({
+  provider,
+  latency,
+}: {
+  provider: ProviderHealth;
+  latency: RoundTripResult | null;
+}) {
   if (provider.status === 'unreachable') {
     return (
       <p className="font-label text-[11px] text-on-surface/50 lowercase">
@@ -378,7 +407,14 @@ function MeshRowMeta({ provider }: { provider: ProviderHealth }) {
           {(provider.lat as number).toFixed(2)}°, {(provider.lng as number).toFixed(2)}°
         </span>
       ) : null}
-      <span>rtt {provider.rttMs} ms</span>
+      {latency && latency.okCount > 0 ? (
+        <span>
+          rtt p50 {Math.round(latency.p50)}ms · p95 {Math.round(latency.p95)}ms · n=
+          {latency.okCount}
+        </span>
+      ) : (
+        <span>rtt n/a</span>
+      )}
     </div>
   );
 }
