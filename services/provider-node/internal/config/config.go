@@ -36,6 +36,9 @@ type Config struct {
 	// sometimes misclassifies; "private" is for NAT Provider Nodes that
 	// want to skip the probing phase.
 	ForceReachability string
+	// AllowedDIDs is the comma-separated creator allowlist passed to
+	// whip.Options.AuthorisedDIDs. Empty disables auth (dev/CI only).
+	AllowedDIDs string
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -71,6 +74,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.BootstrapPeers, "bootstrap", cfg.BootstrapPeers, "comma-separated /p2p-terminated multiaddrs to bootstrap the DHT from")
 	fs.StringVar(&cfg.RelayPeers, "relay-peers", cfg.RelayPeers, "comma-separated /p2p-terminated multiaddrs of Circuit Relay v2 nodes to reserve slots on (for NAT Provider Nodes)")
 	fs.StringVar(&cfg.ForceReachability, "force-reachability", cfg.ForceReachability, "override AutoNAT reachability: \"public\", \"private\", or empty")
+	fs.StringVar(&cfg.AllowedDIDs, "allowed-dids", cfg.AllowedDIDs, "comma-separated WHIP creator DID allowlist (empty disables auth)")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -115,6 +119,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_FORCE_REACHABILITY"); v != "" {
 		cfg.ForceReachability = v
+	}
+	if v := os.Getenv("AEVIA_ALLOWED_DIDS"); v != "" {
+		cfg.AllowedDIDs = v
 	}
 }
 

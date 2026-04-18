@@ -66,3 +66,8 @@ yarn-error.log*
 playwright-report/
 playwright/.cache/
 test-results/
+
+# Deploy artifacts — cross-compiled binaries + e2e runtime logs
+deploy/bin/aevia-node-*
+deploy/bin/whipclient
+deploy/e2e/logs/

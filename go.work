@@ -6,4 +6,5 @@ use (
 	./services/manifest-svc
 	./services/indexer
 	./services/coordinator
+	./deploy/e2e/whipclient
 )

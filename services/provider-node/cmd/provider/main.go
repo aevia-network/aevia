@@ -16,19 +16,23 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	webrtc "github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/config"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/content"
 	aeviadht "github.com/Leeaandrob/aevia/services/provider-node/internal/dht"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/dhtproxy"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/whip"
 	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
 
@@ -150,6 +154,62 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	srv := httpx.NewServer(n.Host())
 	content.NewHandlers().WithSource(cs).Register(srv)
 
+	// WHIP ingest + HLS live routing. Creators POST SDP to /whip; the
+	// CMAFSegmenter pipes fMP4 segments into LivePinSink (which pins
+	// each finalised segment via the pinning.ContentStore). LiveRouter
+	// serves /live/{id}/playlist.m3u8 + init.mp4 + segment/{n}.
+	whipSrv, err := whip.NewServer(whip.Options{
+		AuthorisedDIDs: splitCSV(cfg.AllowedDIDs),
+	})
+	if err != nil {
+		return err
+	}
+	liveRouter := whip.NewLiveRouter()
+	whipLog := logger.With().Str("component", "whip").Logger()
+	whipSrv.OnSession(func(sess *whip.Session) {
+		sink, err := whip.NewLivePinSink(cs, sess.ID)
+		if err != nil {
+			whipLog.Error().Err(err).Str("event", "live_sink_init_failed").Str("session_id", sess.ID).Msg("live sink init failed")
+			return
+		}
+		seg, err := whip.NewCMAFSegmenter(sink)
+		if err != nil {
+			whipLog.Error().Err(err).Str("event", "live_segmenter_init_failed").Str("session_id", sess.ID).Msg("live segmenter init failed")
+			return
+		}
+		if err := liveRouter.AttachSession(sess.ID, sink); err != nil {
+			whipLog.Error().Err(err).Str("event", "live_router_attach_failed").Str("session_id", sess.ID).Msg("live router attach failed")
+			return
+		}
+		sess.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+			go func() {
+				if err := whip.ReadTrack(track, seg); err != nil {
+					whipLog.Warn().Err(err).Str("event", "live_track_eof").Str("session_id", sess.ID).Msg("track pump ended")
+				}
+			}()
+		})
+		go func() {
+			<-sess.Done()
+			if err := seg.Close(); err != nil {
+				whipLog.Warn().Err(err).Str("event", "live_segmenter_close").Str("session_id", sess.ID).Msg("segmenter close")
+			}
+			liveRouter.DetachSession(sess.ID)
+			whipLog.Info().Str("event", "live_session_ended").Str("session_id", sess.ID).Msg("live session ended")
+		}()
+		whipLog.Info().Str("event", "live_session_started").Str("session_id", sess.ID).Msg("live session started")
+	})
+	whipSrv.Register(srv)
+	liveRouter.Register(srv)
+
+	// /dht/resolve lets Provider-mode nodes double as DHT proxies for
+	// browser clients. Harmless on a Provider NAT and unlocks WHEP wiring
+	// without an extra Relay hop.
+	dhtProxy, err := dhtproxy.New(dhtproxy.AdaptDHT(d))
+	if err != nil {
+		return err
+	}
+	dhtProxy.Register(srv)
+
 	tcpListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return err
@@ -213,4 +273,20 @@ func boot_message(mode config.Mode) string {
 		return "relay-node started"
 	}
 	return "provider-node started"
+}
+
+// splitCSV trims and splits a comma-separated DID list. Empty input
+// yields a nil slice so whip.Options treats it as "auth disabled".
+func splitCSV(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
