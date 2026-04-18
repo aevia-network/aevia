@@ -1,5 +1,6 @@
 'use client';
 
+import { ClientOnly } from '@/components/client-only';
 import { Button } from '@/components/ui/button';
 import { safeNextPath } from '@/lib/safe-next';
 import { useLogin, usePrivy } from '@aevia/auth/client';
@@ -21,12 +22,38 @@ import { useRef } from 'react';
  * Anchoring navigation to Privy's `onComplete` callback fires only once per
  * this tab's lifetime when the user finishes the flow; pre-existing
  * authenticated sessions are handled by the server redirect at the page level.
+ *
+ * Public component is a thin gate around `<LoginButtonWithHooks>`. Privy's
+ * SDK can read an undefined ref for one frame during the dynamic load of
+ * `AeviaPrivyProvider`, crashing the page. `<ClientOnly>` defers the hook
+ * call by one tick, with a same-shape disabled fallback button so layout
+ * stays stable.
  */
 export function LoginButton({
   size = 'lg',
   next,
 }: {
   size?: 'sm' | 'default' | 'lg';
+  next?: string;
+}) {
+  return (
+    <ClientOnly
+      fallback={
+        <Button type="button" size={size} disabled>
+          entrar
+        </Button>
+      }
+    >
+      <LoginButtonWithHooks size={size} next={next} />
+    </ClientOnly>
+  );
+}
+
+function LoginButtonWithHooks({
+  size,
+  next,
+}: {
+  size: 'sm' | 'default' | 'lg';
   next?: string;
 }) {
   const navigatedRef = useRef(false);

@@ -1,5 +1,6 @@
 'use client';
 
+import { ClientOnly } from '@/components/client-only';
 import { safeNextPath } from '@/lib/safe-next';
 import { appChainId, useLogin, usePrivy } from '@aevia/auth/client';
 import { MeshDot } from '@aevia/ui';
@@ -21,7 +22,30 @@ type LoginMethod = 'email' | 'google' | 'apple' | 'passkey';
  * loginMethods })` biases the modal toward the chosen method but still
  * accepts any configured option if the user pivots.
  */
+/**
+ * Public component is a thin gate around `<SignInScreenWithHooks>`. The
+ * `useLogin`/`usePrivy` calls inside Privy's React SDK read from a context
+ * whose ref can be `undefined` for a frame during the dynamic load of
+ * `AeviaPrivyProvider` (see `client-only.tsx` for the full diagnosis).
+ * Wrapping the hook-using inner in `<ClientOnly>` lets the static layout
+ * paint immediately with all auth controls disabled, then upgrade to live
+ * handlers once Privy's context is available.
+ */
 export function SignInScreen({ next }: { next?: string }) {
+  return (
+    <ClientOnly fallback={<SignInScreenView disabled loginWith={noop} loginAll={noop} />}>
+      <SignInScreenWithHooks next={next} />
+    </ClientOnly>
+  );
+}
+
+function noop() {
+  // Used as the fallback handler before Privy's context is mounted; the
+  // buttons render disabled in that state, so this should never actually
+  // fire — but stays a no-op for defensive reasons.
+}
+
+function SignInScreenWithHooks({ next }: { next?: string }) {
   const navigatedRef = useRef(false);
   const { ready, authenticated } = usePrivy();
   const { login } = useLogin({
@@ -56,6 +80,18 @@ export function SignInScreen({ next }: { next?: string }) {
     login();
   };
 
+  return <SignInScreenView disabled={disabled} loginWith={loginWith} loginAll={loginAll} />;
+}
+
+function SignInScreenView({
+  disabled,
+  loginWith,
+  loginAll,
+}: {
+  disabled: boolean;
+  loginWith: (method: LoginMethod) => void;
+  loginAll: () => void;
+}) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col pb-12">
       {/* Top-right close icon. Follows Stitch's pre-auth chrome pattern; in
