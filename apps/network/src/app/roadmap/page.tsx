@@ -89,15 +89,15 @@ const sections: Section[] = [
       },
       {
         date: 'sprint 3',
-        headline: 'rfc-6 risk score publicado e ancorado',
+        headline: 'rfc-6 risk score — rascunho',
         descriptor:
-          'fórmula R = 0.4·r_legal + 0.3·r_abuse + 0.3·r_values, scoring off-chain, conselho com veto.',
+          'fórmula R = 0.4·r_legal + 0.3·r_abuse + 0.3·r_values em rascunho; ancoragem on-chain prevista após revisão externa.',
       },
       {
         date: 'sprint 4',
-        headline: 'rfc-7 moderação e jury ecumênica',
+        headline: 'rfc-7 moderação e jury ecumênica — rascunho',
         descriptor:
-          '12 assentos, 4 anos, direito de veto em parâmetros. primeira convocação em testnet.',
+          'proposta de 12 assentos com mandato de 4 anos e direito de veto em parâmetros; composição e regras em discussão.',
       },
     ],
   },
@@ -127,6 +127,23 @@ export default function Roadmap() {
         </section>
 
         <div className="border-t border-primary-dim/40 mt-24" />
+
+        <section className="mx-auto max-w-[72ch] mt-16">
+          <div className="rounded-lg border border-primary-dim/30 bg-surface-container-low p-6">
+            <span className="font-label text-xs text-tertiary tracking-[0.04em]">
+              forward-looking statement
+            </span>
+            <p className="mt-2 text-sm text-on-surface-variant leading-[1.7]">
+              este roadmap reflete planejamento à data de publicação. não constitui compromisso
+              contratual nem promessa de entrega. cronogramas, escopos e priorizações podem mudar
+              sem aviso. <span className="font-mono">shipped</span> reflete estado auditado por
+              testes integrados; <span className="font-mono">in flight</span> e{' '}
+              <span className="font-mono">next</span> refletem intenção sob as condições atuais.
+              nada aqui deve ser interpretado como promessa de rendimento, oferta de valor
+              mobiliário, ou aconselhamento de investimento.
+            </p>
+          </div>
+        </section>
 
         {sections.map((section, sectionIndex) => {
           const isLast = sectionIndex === sections.length - 1;

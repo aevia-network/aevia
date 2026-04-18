@@ -177,6 +177,20 @@ export default function Whitepaper() {
                 </p>
               </header>
 
+              <div className="mt-16 rounded-lg border border-primary-dim/30 bg-surface-container-low p-6">
+                <span className="font-label text-xs text-tertiary tracking-[0.04em]">
+                  nota legal
+                </span>
+                <p className="mt-2 text-sm text-on-surface-variant leading-[1.7]">
+                  este documento descreve arquitetura de protocolo, não oferta de valores
+                  mobiliários. fluxos de cusdc descritos nas seções 04 e 07 representam compensação
+                  fee-for-service por infraestrutura prestada ao protocolo; não são retornos sobre
+                  capital investido. declarações sobre releases futuros, rfcs, ou funcionalidades
+                  são forward-looking e podem mudar sem aviso. este whitepaper não constitui
+                  aconselhamento jurídico, financeiro ou de investimento.
+                </p>
+              </div>
+
               <div className="mt-[120px] h-px w-full bg-primary-dim/40" />
 
               {/* §01 sumário executivo */}
@@ -347,8 +361,9 @@ export default function Whitepaper() {
                 <div className="mt-8 flex flex-col gap-6 text-lg leading-[1.7]">
                   <p>
                     créditos fluem do espectador para o criador via credit pulse. uma fração é
-                    retida para o persistence pool, que remunera os nós que mantêm cópias
-                    auditáveis.
+                    retida para o persistence pool, que compensa os nós que prestam serviço de
+                    replicação auditada. cada fluxo é pagamento por serviço prestado — não retorno
+                    sobre capital investido, não oferta de valores mobiliários.
                   </p>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-4 font-label text-sm">

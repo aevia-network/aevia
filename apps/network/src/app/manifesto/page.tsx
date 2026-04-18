@@ -17,14 +17,14 @@ const PARAGRAPHS_BEFORE_QUOTE = [
 ];
 
 const PARAGRAPHS_BETWEEN = [
-  'criadores cristãos, jornalistas independentes e pastores em regiões de pressão precisam de um lar que não dependa da caprichosa tolerância de um único cdn. aevia é esse lar. não por idealismo, mas por arquitetura.',
-  'manifestos assinados em base l2. conteúdo endereçado por cid. cópias pagas em cusdc para nós de persistência que o criador pode provar estarem ativos. quando um cdn comercial decide remover você, suas cópias continuam onde sempre estiveram, alcançáveis pelo mesmo cid que seu público já conhece.',
+  'criadores cujo trabalho é derrubado por decisões opacas, vozes que perdem alcance sem aviso, meios e ministérios que dependem de cdns que podem mudar a regra da noite para o dia — todos precisam de uma camada que não dependa da tolerância caprichosa de um provedor único. aevia é essa camada. não por idealismo, mas por arquitetura.',
+  'manifestos assinados em base l2. conteúdo endereçado por cid. compensação em cusdc pelos serviços de replicação que provider nodes prestam. quando um cdn comercial decide derrubar você, suas cópias continuam onde sempre estiveram, alcançáveis pelo mesmo cid que seu público já conhece.',
 ];
 
 const PARAGRAPHS_AFTER_BREAK = [
-  'não estamos vendendo neutralidade. a aup da aevia declara o que o protocolo não subsidia e o que o ranking não amplifica. pornografia, apologia de violência, material que sexualiza menores. esses bits podem existir no ipfs público — nós não decidimos isso. o que decidimos é que o cheque do persistence pool não vai para eles, e o feed curado não os surfaceia.',
-  'a diferença entre uma plataforma e um protocolo é essa. uma plataforma te promete neutralidade e pratica moderação oculta. um protocolo te dá regras normativas, transparência matemática de risco e um conselho com direito a veto. os dois são curados. só um diz a verdade sobre isso.',
-  'persistência, para nós, é um ato de cuidado. começamos pequenos, com um conjunto de criadores que carregam o peso de serem silenciados por motivos que não caberiam em nenhuma política honesta. vamos continuar. devagar, de forma auditável, sem hype. se você leu até aqui, você já faz parte disso.',
+  'a aevia é neutra na camada de infraestrutura: qualquer conteúdo canonicamente assinado pode persistir no ipfs e ser ancorado em base l2. usuários são os publishers dos próprios manifestos — a aevia não assume responsabilidade pelo teor desse conteúdo. a camada editorial — ranking, feed, subsidy do persistence pool — é que tem critério público, expresso na aup.',
+  'a diferença entre plataforma opaca e protocolo transparente é esta: um protocolo publica suas regras normativas em rfcs legíveis, expõe os pesos do score de risco, e designa um conselho com votos auditáveis. a aevia modera distribuição, não conteúdo; o que existe no ipfs raw não é decisão nossa. o que subsidiamos, sim, é.',
+  'persistência, para nós, é um ato de cuidado. começamos pequenos, com criadores cujo trabalho não cabe em políticas honestas de plataformas comerciais. vamos continuar. devagar, de forma auditável, sem hype. se você leu até aqui, você já faz parte disso.',
 ];
 
 export default function Manifesto() {
