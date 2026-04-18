@@ -10,12 +10,15 @@ import (
 // TestRankerWorkedExample is the §5.4 scenario with γ=50 (the
 // production-tuned default per spec §5.2.2). With γ=50 same-region
 // always beats same-continent always beats cross-continent, regardless
-// of load/rtt within the lower buckets. The worked-example TABLE in
-// the spec §5.4 printed γ=1 score numbers (38/50/101/230) which is an
-// inconsistency — the ORDER A,D,B,C below reflects the spec's stated
-// design intent: "cross-continent is a last resort". Spec §5.4 will
-// be patched in a follow-up PR to match; this test locks the runtime
-// behaviour we actually want.
+// of load/rtt within the lower buckets — the order A,D,B,C below
+// reflects the spec's stated design intent: "cross-continent is a
+// last resort".
+//
+// Historical note: spec §5.4 originally printed γ=1 score numbers
+// (38/50/101/230) with implied order A,B,D,C — an inconsistency
+// against its own §5.2.2 rationale (γ=50). The spec was patched
+// 2026-04-18 to recompute with γ=50, matching this test and the
+// production runtime behaviour.
 func TestRankerWorkedExample(t *testing.T) {
 	r := mirror.NewRanker(mirror.DefaultWeights(), "BR-PB", -7.23, -35.88, true)
 	cs := []mirror.Candidate{

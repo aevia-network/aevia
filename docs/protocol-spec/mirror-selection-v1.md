@@ -413,18 +413,26 @@ prevents two origins thrashing back and forth on the same pair.
 ### 5.4 Worked example
 
 Suppose an origin in `BR-PB` starts a stream with `viewer_region=BR-SP` and
-sees four candidates:
+sees four candidates. Applying the default coefficients from §5.2.2
+(α=1, β=10, γ=50):
 
-| Peer | Region  | RTT EMA | Sessions | RTT term | Load term | Region term | Score |
-|------|---------|---------|----------|----------|-----------|-------------|-------|
-| A    | BR-SP   | 18 ms   | 2        | 18       | 20        | 0           | **38**    |
-| B    | BR-RJ   | 25 ms   | 0        | 25       | 0         | 25          | **50**    |
-| C    | US-FL   | 120 ms  | 1        | 120      | 10        | 100         | **230**   |
-| D    | BR-SP   | 21 ms   | 8        | 21       | 80        | 0           | **101**   |
+| Peer | Region  | RTT EMA | Sessions | RTT term (α·rtt) | Load term (β·load) | Region penalty | Region term (γ·penalty) | Score |
+|------|---------|---------|----------|------------------|--------------------|----------------|-------------------------|-------|
+| A    | BR-SP   | 18 ms   | 2        | 18               | 20                 | 0              | 0                       | **38**    |
+| B    | BR-RJ   | 25 ms   | 0        | 25               | 0                  | 25             | 1 250                   | **1 275** |
+| C    | US-FL   | 120 ms  | 1        | 120              | 10                 | 100            | 5 000                   | **5 130** |
+| D    | BR-SP   | 21 ms   | 8        | 21               | 80                 | 0              | 0                       | **101**   |
 
-Top-3 selection: `[A, B, D]`. Peer C never makes it past the continent
-penalty. Peer D loses to B despite same region because its load term
-dominates — exactly the adaptive pressure we want.
+Top-3 selection: `[A, D, B]`. Peer C is out of contention — the
+cross-continent penalty of 5 000 ms-equivalent dominates everything
+else. Peer D beats Peer B despite having 8 active sessions because
+same-region (penalty 0) outweighs cross-region (1 250) by a wide
+margin — which is the intended behaviour: load balancing applies
+within a region, not across regions. Region dominance is a feature,
+not a bug; a same-region mirror with 10× the load still beats a
+neighbouring-region idle mirror, because RTT jitter under load is
+bounded (~30 ms) while a cross-region hop adds ~100-300 ms of
+irreducible propagation.
 
 ---
 
