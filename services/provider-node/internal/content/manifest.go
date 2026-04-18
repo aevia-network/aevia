@@ -20,15 +20,16 @@ func BuildFixtureManifest(cid string) (*manifest.Manifest, error) {
 	return manifest.BuildFromPayloads(payloads, DefaultSegmentDuration)
 }
 
-func serveManifest(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) serveManifest(w http.ResponseWriter, r *http.Request) {
 	cid := r.PathValue("cid")
 	if cid == "" {
 		http.Error(w, "missing cid", http.StatusBadRequest)
 		return
 	}
-	m, err := BuildFixtureManifest(cid)
+
+	m, err := h.resolveManifest(cid)
 	if err != nil {
-		http.Error(w, "build manifest: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	body, err := m.CanonicalJSON()
@@ -42,4 +43,20 @@ func serveManifest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", `"`+m.CID+`"`)
 	w.Header().Set("X-Aevia-Manifest-CID", m.CID)
 	_, _ = w.Write(body)
+}
+
+func (h *Handlers) resolveManifest(cid string) (*manifest.Manifest, error) {
+	if h.source != nil {
+		m, err := h.source.GetManifest(cid)
+		if err == nil {
+			return m, nil
+		}
+		if !isNotFound(err) {
+			return nil, err
+		}
+	}
+	if !h.FixtureFallback {
+		return nil, ErrNotPinned
+	}
+	return BuildFixtureManifest(cid)
 }

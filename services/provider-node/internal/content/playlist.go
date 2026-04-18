@@ -48,13 +48,31 @@ func (p PlaylistSpec) Render() string {
 	return b.String()
 }
 
-func servePlaylist(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) servePlaylist(w http.ResponseWriter, r *http.Request) {
 	cid := r.PathValue("cid")
 	if cid == "" {
 		http.Error(w, "missing cid", http.StatusBadRequest)
 		return
 	}
-	body := PlaylistSpec{CID: cid}.Render()
+
+	// When a source is attached and the CID is pinned, render the playlist
+	// from the real manifest (segment_count + segment_duration come from
+	// the stored manifest). Otherwise fall back to fixture defaults.
+	spec := PlaylistSpec{CID: cid}
+	if h.source != nil {
+		m, err := h.source.GetManifest(cid)
+		if err == nil {
+			spec.SegmentCount = m.SegmentCount
+			spec.SegmentDuration = m.SegmentDuration
+		} else if !isNotFound(err) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		} else if !h.FixtureFallback {
+			http.Error(w, "cid not pinned", http.StatusNotFound)
+			return
+		}
+	}
+	body := spec.Render()
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	_, _ = w.Write([]byte(body))
