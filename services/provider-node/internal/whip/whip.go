@@ -20,8 +20,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
+
+// KeyframeRequestInterval is how often the server asks the encoder (via
+// RTCP PLI) for a fresh IDR. Chrome's WebRTC stack only emits keyframes
+// on its own schedule — often every 20-60s — which makes CMAF segment
+// boundaries drift wildly (segments balloon to 20+ MB before the next
+// IDR lets the segmenter cut). 2s keeps segments near the 6s target.
+const KeyframeRequestInterval = 2 * time.Second
 
 // Session represents one active WHIP ingest — one creator streaming one
 // live show. The provider-node exposes an /active endpoint later for
@@ -68,10 +76,10 @@ func (s *Session) OnTrack(handler func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 type Server struct {
 	api *webrtc.API
 
-	mu            sync.Mutex
-	sessions      map[string]*Session
-	sessionID     func() string
-	onSessionCbs  []func(*Session)
+	mu             sync.Mutex
+	sessions       map[string]*Session
+	sessionID      func() string
+	onSessionCbs   []func(*Session)
 	authorisedDIDs map[string]struct{}
 }
 
@@ -87,10 +95,45 @@ type Options struct {
 // NewServer builds a whip.Server with a pion/webrtc API configured for
 // H.264 + Opus. Other codecs are rejected to keep the M8 scope tight —
 // VP9/AV1 land when transcoding gets added.
+//
+// We explicitly register ONLY H.264 (Baseline + Constrained Baseline)
+// and Opus. Browsers negotiating a WHIP session will then be forced to
+// encode in H.264; defaulting to RegisterDefaultCodecs() lets Chrome
+// pick VP8 for some inputs (canvas.captureStream, screen capture) and
+// our CMAF segmenter rejects non-H.264 payloads silently.
 func NewServer(opts Options) (*Server, error) {
 	mediaEngine := &webrtc.MediaEngine{}
-	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
-		return nil, fmt.Errorf("whip: register codecs: %w", err)
+	// H.264 Constrained Baseline 3.1 + packetization-mode=1. Matches the
+	// profile Chrome/Safari ship for WebRTC and that most hardware
+	// decoders accept.
+	h264Profiles := []string{
+		"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+		"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
+		"level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f",
+	}
+	for _, fmtp := range h264Profiles {
+		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: webrtc.RTPCodecCapability{
+				MimeType:     webrtc.MimeTypeH264,
+				ClockRate:    90000,
+				Channels:     0,
+				SDPFmtpLine:  fmtp,
+				RTCPFeedback: nil,
+			},
+			PayloadType: 0, // let MediaEngine assign
+		}, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, fmt.Errorf("whip: register h264 codec: %w", err)
+		}
+	}
+	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType:  webrtc.MimeTypeOpus,
+			ClockRate: 48000,
+			Channels:  2,
+		},
+		PayloadType: 0,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return nil, fmt.Errorf("whip: register opus codec: %w", err)
 	}
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
 	dids := make(map[string]struct{}, len(opts.AuthorisedDIDs))
@@ -194,6 +237,9 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// Wire up the OnTrack fanout. pion calls this when each remote track
 	// lands; handlers registered via Session.OnTrack fire.
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		if track.Kind() == webrtc.RTPCodecTypeVideo {
+			go pliLoop(pc, session.doneCh, uint32(track.SSRC()))
+		}
 		session.mu.Lock()
 		handlers := make([]func(*webrtc.TrackRemote, *webrtc.RTPReceiver), len(session.trackHandlers))
 		copy(handlers, session.trackHandlers)
@@ -297,4 +343,25 @@ func (s *Server) checkAuth(did string) bool {
 	}
 	_, ok := s.authorisedDIDs[did]
 	return ok
+}
+
+// pliLoop sends RTCP Picture-Loss-Indication to the sender every
+// KeyframeRequestInterval, so the browser's H.264 encoder emits an IDR
+// promptly and the CMAF segmenter can cut segments near the 6s target.
+// Returns when the session's done channel closes or WriteRTCP fails
+// (typically because the peer went away).
+func pliLoop(pc *webrtc.PeerConnection, done <-chan struct{}, ssrc uint32) {
+	t := time.NewTicker(KeyframeRequestInterval)
+	defer t.Stop()
+	pkts := []rtcp.Packet{&rtcp.PictureLossIndication{SenderSSRC: 0, MediaSSRC: ssrc}}
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			if err := pc.WriteRTCP(pkts); err != nil {
+				return
+			}
+		}
+	}
 }

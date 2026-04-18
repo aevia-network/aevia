@@ -215,10 +215,18 @@ func (s *CMAFSegmenter) buildInitSegment() ([]byte, error) {
 		return nil, fmt.Errorf("parse SPS: %w", err)
 	}
 
+	// We use sample-entry "avc3" (in-band parameter sets) rather than
+	// "avc1" (parameter sets in moov only) because WebRTC encoders —
+	// notably Chrome — change SPS/PPS mid-stream as they ramp up
+	// resolution or adapt to network feedback. With avc1, the decoder
+	// is locked to the init segment's SPS and mis-decodes everything
+	// after the first resolution change ("no frame!" spam). avc3 tells
+	// the decoder to prefer the in-band SPS/PPS present at each IDR,
+	// so the resolution/profile can evolve over the session.
 	init := mp4.CreateEmptyInit()
 	init.AddEmptyTrack(VideoTimescale, "video", "und")
 	trak := init.Moov.Traks[0]
-	if err := trak.SetAVCDescriptor("avc1", [][]byte{s.sps}, [][]byte{s.pps}, true); err != nil {
+	if err := trak.SetAVCDescriptor("avc3", [][]byte{s.sps}, [][]byte{s.pps}, true); err != nil {
 		return nil, fmt.Errorf("SetAVCDescriptor: %w", err)
 	}
 	trak.Mdia.Minf.Stbl.Stsd.AvcX.Width = uint16(spsParsed.Width)

@@ -71,3 +71,6 @@ test-results/
 deploy/bin/aevia-node-*
 deploy/bin/whipclient
 deploy/e2e/logs/
+
+# Playwright MCP ephemeral traces
+.playwright-mcp/

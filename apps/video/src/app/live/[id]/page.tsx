@@ -14,6 +14,33 @@ export const runtime = 'edge';
 export default async function LiveViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
+  // Aevia-mesh backend short-circuit: no Cloudflare round-trip, no
+  // central session index. The viewer hits the provider-node's HLS
+  // endpoint directly via hls.js. Stream state is inferred client-side
+  // from playlist availability. Creator identity lands later via
+  // manifest signing (Protocol Spec §3).
+  const providerBase = process.env.NEXT_PUBLIC_PROVIDER_BASE_URL?.trim();
+  if (providerBase) {
+    const base = providerBase.replace(/\/+$/, '');
+    return (
+      <PlayerScreen
+        uid={id}
+        title="transmissão ao vivo"
+        whepUrl={''}
+        hlsUrl={null}
+        aeviaHlsUrl={`${base}/live/${id}/playlist.m3u8`}
+        vodProcessing={false}
+        creatorDisplayName="aevia"
+        creatorAddress={null}
+        state="connected"
+        startedISO={new Date().toISOString()}
+        manifestCid={null}
+        registerBlock={null}
+        registerTxHash={null}
+      />
+    );
+  }
+
   let live: Awaited<ReturnType<typeof getLiveInput>>;
   try {
     live = await getLiveInput(id);
@@ -79,6 +106,7 @@ export default async function LiveViewerPage({ params }: { params: Promise<{ id:
       title={live.meta?.name ?? 'sem título'}
       whepUrl={live.webRTCPlayback.url}
       hlsUrl={vodHlsUrl}
+      aeviaHlsUrl={null}
       vodProcessing={vodProcessing}
       creatorDisplayName={creatorDisplayName}
       creatorAddress={creatorAddress || null}

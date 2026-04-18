@@ -44,8 +44,21 @@ type RankingTemplate = 'familia' | 'padrao' | 'ministerio';
 interface CreatedLive {
   uid: string;
   whipUrl: string;
-  whepUrl: string;
+  whepUrl: string | null;
   creator: string;
+  backend?: 'cloudflare-stream' | 'aevia-mesh';
+}
+
+interface CreateLiveResponse {
+  backend: 'cloudflare-stream' | 'aevia-mesh';
+  uid: string | null;
+  whipUrl: string;
+  whepUrl: string | null;
+  hlsBaseUrl: string | null;
+  creator: string;
+  creatorAddress: string;
+  creatorDid: string;
+  title: string | null;
 }
 
 interface DirectUploadResponse {
@@ -113,12 +126,12 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? `falha ao criar transmissão (${res.status})`);
       }
-      const live = (await res.json()) as CreatedLive;
-      setCreated(live);
+      const apiLive = (await res.json()) as CreateLiveResponse;
 
       const session = await publishWhip({
-        whipUrl: live.whipUrl,
+        whipUrl: apiLive.whipUrl,
         stream: streamRef.current,
+        did: apiLive.creatorDid,
         onConnectionStateChange: (s) => {
           if (s === 'connected') setStatus('live');
           if (s === 'failed' || s === 'disconnected' || s === 'closed') {
@@ -128,6 +141,21 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
         },
       });
       whipSessionRef.current = session;
+
+      // On the aevia-mesh path the uid is minted by the provider-node at WHIP
+      // time and arrives via the X-Aevia-Session-ID response header. On the
+      // Cloudflare path the uid already came from POST /api/lives.
+      const uid = apiLive.uid ?? session.sessionId;
+      if (!uid) {
+        throw new Error('resposta da rede não trouxe id da transmissão');
+      }
+      setCreated({
+        uid,
+        whipUrl: apiLive.whipUrl,
+        whepUrl: apiLive.whepUrl,
+        creator: apiLive.creator,
+        backend: apiLive.backend,
+      });
 
       // Start client-side recording in parallel — Cloudflare WHIP beta does not
       // produce server-side recordings yet, so we capture locally and upload
@@ -146,6 +174,7 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
 
   const stopLive = useCallback(async () => {
     const liveUid = created?.uid;
+    const backend = created?.backend ?? 'cloudflare-stream';
     const recorder = recorderRef.current;
     recorderRef.current = null;
 
@@ -158,6 +187,15 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setStatus('idle');
+
+    // Client-side recording → Cloudflare tus direct upload. Aevia-mesh
+    // path pins each live segment on the provider-node itself, so the
+    // replay is reconstructed by announcing the final manifest CID via
+    // DHT — no VOD upload needed. That wire-up lands in M8.5.
+    if (backend !== 'cloudflare-stream') {
+      recorder?.cancel();
+      return;
+    }
 
     if (recorder && liveUid) {
       try {
@@ -179,7 +217,7 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
         setErrorMsg(err instanceof Error ? err.message : 'falha ao finalizar gravação');
       }
     }
-  }, [created?.uid, startUpload]);
+  }, [created?.uid, created?.backend, startUpload]);
 
   useEffect(() => {
     return () => {

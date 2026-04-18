@@ -47,6 +47,13 @@ export interface PlayerScreenProps {
   title: string;
   whepUrl: string;
   hlsUrl: string | null;
+  /**
+   * HLS playlist URL served by an Aevia provider-node (M8 mesh path).
+   * When set, playback skips WHEP entirely and uses hls.js against the
+   * provider's `/live/{sessionId}/playlist.m3u8` — ~10s latency,
+   * zero Cloudflare. `null` means the legacy Cloudflare WHEP+HLS path.
+   */
+  aeviaHlsUrl: string | null;
   vodProcessing?: boolean;
   creatorDisplayName: string;
   creatorAddress: `0x${string}` | null;
@@ -104,12 +111,80 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
   useEffect(() => {
     if (mode !== 'live') return;
+    // Aevia-mesh path: skip WHEP entirely, let the HLS effect below
+    // drive playback from the provider-node's live playlist. WHEP on our
+    // own mesh lands in M8.5 (see task #76).
+    if (props.aeviaHlsUrl) return;
     void startLive();
     return () => {
       void whepSessionRef.current?.stop();
       whepSessionRef.current = null;
     };
-  }, [mode, startLive]);
+  }, [mode, startLive, props.aeviaHlsUrl]);
+
+  // Aevia-mesh live playback: hls.js against the provider-node's rolling
+  // playlist. Keeps the same <video> element the WHEP path uses so the
+  // rest of the UI (autoplay gate, states, controls) stays unchanged.
+  useEffect(() => {
+    if (mode !== 'live') return;
+    if (!props.aeviaHlsUrl) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.srcObject = null;
+    setLiveStatus('connecting');
+    setLiveError(null);
+
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = props.aeviaHlsUrl;
+      const onCanPlay = () => {
+        setLiveStatus('playing');
+        video.play().catch(() => setAutoplayBlocked(true));
+      };
+      const onError = () => {
+        setLiveStatus('error');
+        setLiveError('playlist indisponível — transmissão pode ter encerrado');
+      };
+      video.addEventListener('canplay', onCanPlay, { once: true });
+      video.addEventListener('error', onError);
+      return () => {
+        video.removeEventListener('canplay', onCanPlay);
+        video.removeEventListener('error', onError);
+        video.src = '';
+      };
+    }
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: false,
+        // Live tuning — keep the manifest fresh and the buffer small so
+        // we chase the head of the playlist as the provider pins new
+        // segments. Defaults target VOD.
+        liveSyncDurationCount: 2,
+        liveMaxLatencyDurationCount: 6,
+        manifestLoadingMaxRetry: 10,
+        manifestLoadingRetryDelay: 1_500,
+      });
+      hls.loadSource(props.aeviaHlsUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setLiveStatus('playing');
+        video.play().catch(() => setAutoplayBlocked(true));
+      });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          setLiveError(`mesh: ${data.type}`);
+          setLiveStatus('error');
+        }
+      });
+      return () => {
+        hls.destroy();
+      };
+    }
+
+    setLiveError('navegador não suporta HLS');
+    setLiveStatus('error');
+  }, [mode, props.aeviaHlsUrl]);
 
   // ---- Auto-handoff live → VOD when broadcaster ends transmission ---------
   // The WHEP `disconnected` callback already flips `liveStatus` to `'ended'`

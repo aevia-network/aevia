@@ -4,9 +4,9 @@
 // The pivot of the Aevia Provider Node architecture is that a single
 // http.Handler must be addressable by three distinct clients:
 //
-//   1. a browser hitting https://provider.example/... (Provider Público path)
-//   2. another Go node dialing via libp2p stream (Provider-to-Provider sync)
-//   3. a Relay Node bridging HTTP↔libp2p for Providers behind NAT
+//  1. a browser hitting https://provider.example/... (Provider Público path)
+//  2. another Go node dialing via libp2p stream (Provider-to-Provider sync)
+//  3. a Relay Node bridging HTTP↔libp2p for Providers behind NAT
 //
 // go-libp2p-gostream gives us a net.Listener backed by a libp2p stream
 // protocol. Everything above it is ordinary net/http, so the same mux plugs
@@ -101,7 +101,7 @@ func (s *Server) ServeHTTPOn(ctx context.Context, l net.Listener) error {
 
 func (s *Server) serveOn(ctx context.Context, l net.Listener) error {
 	srv := &http.Server{
-		Handler:           s.mux,
+		Handler:           withCORS(s.mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	s.mu.Lock()
@@ -172,5 +172,31 @@ func (s *Server) registerDefaults() {
 			Status: "ok",
 			PeerID: s.host.ID().String(),
 		})
+	})
+}
+
+// withCORS wraps h with permissive CORS headers so browsers can reach the
+// provider-node directly (WHIP POST, HLS GET, /dht/resolve POST). Exposes
+// X-Aevia-Session-ID + Location so the JS client can read them from the
+// WHIP response. For dev/testnet we allow any Origin; production tightens
+// this to the known aevia.video + provider-node operator domains via
+// a future `--cors-origin` flag.
+func withCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Aevia-DID, Authorization")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Aevia-Session-ID, Location")
+		w.Header().Set("Access-Control-Max-Age", "600")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
 	})
 }
