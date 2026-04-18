@@ -21,6 +21,7 @@
     "@aevia/ui": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
+    "lucide-react": "^0.468.0",
     "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
