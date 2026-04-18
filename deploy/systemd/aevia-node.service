@@ -1,0 +1,42 @@
+[Unit]
+Description=Aevia Relay Node (Circuit Relay v2 + Kademlia DHT + /dht/resolve proxy)
+Documentation=https://github.com/Leeaandrob/aevia
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aevia
+Group=aevia
+WorkingDirectory=/var/lib/aevia-node
+EnvironmentFile=/etc/aevia-node/env
+ExecStart=/usr/local/bin/aevia-node run \
+  --mode=relay \
+  --listen=/ip4/0.0.0.0/tcp/4001 \
+  --http-addr=0.0.0.0:8080 \
+  --force-reachability=public \
+  --data-dir=/var/lib/aevia-node
+
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aevia-node
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Resource caps (Relay Node typical load)
+LimitNOFILE=65536
+MemoryHigh=512M
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

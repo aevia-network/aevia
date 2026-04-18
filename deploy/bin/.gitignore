@@ -1,0 +1,7 @@
+# Cross-compiled binaries produced by deploy/scripts/build-all.sh.
+# They're 28-29 MB each (large for a repo), contain the git sha in
+# LDFLAGS Version, and must be rebuilt per deploy from current source
+# for a trustworthy artifact chain. Do not commit.
+aevia-node-linux-arm64
+aevia-node-linux-amd64
+aevia-node-darwin-arm64
