@@ -26,11 +26,19 @@ const (
 // ContentStore is the pin-set-backed-by-storage.
 type ContentStore struct {
 	store *storage.Store
+	quota Quota
 }
 
 // NewContentStore binds a storage.Store into a ContentStore.
 func NewContentStore(s *storage.Store) *ContentStore {
 	return &ContentStore{store: s}
+}
+
+// WithQuota attaches or replaces the Quota. Existing pins are grandfathered:
+// the quota only gates future Pin calls. Returns the receiver for chaining.
+func (c *ContentStore) WithQuota(q Quota) *ContentStore {
+	c.quota = q
+	return c
 }
 
 // Pin commits (manifest, segments) atomically. manifest.SegmentCount MUST
@@ -54,6 +62,50 @@ func (c *ContentStore) Pin(cid string, m *manifest.Manifest, segments [][]byte) 
 		return fmt.Errorf("pinning: canonical json: %w", err)
 	}
 
+	// Quota check + counter update happen inside the same WriteBatch so a
+	// partial Pin never leaves counters drifted from reality.
+	pinSize := uint64(len(manifestJSON))
+	for _, seg := range segments {
+		pinSize += uint64(len(seg))
+	}
+
+	currentCount, currentBytes, err := c.Usage()
+	if err != nil {
+		return err
+	}
+	if c.quota.MaxPins > 0 && currentCount+1 > c.quota.MaxPins {
+		return ErrQuotaExceeded{Resource: "pins", Limit: uint64(c.quota.MaxPins), Current: uint64(currentCount), Adding: 1}
+	}
+	if c.quota.MaxBytes > 0 && currentBytes+pinSize > c.quota.MaxBytes {
+		return ErrQuotaExceeded{Resource: "bytes", Limit: c.quota.MaxBytes, Current: currentBytes, Adding: pinSize}
+	}
+
+	// Guard against double-pinning the same CID — if already pinned,
+	// subtract its size from the delta so counters reflect reality.
+	existing, err := c.GetManifest(cid)
+	var existingSize uint64
+	if err == nil {
+		existingJSON, _ := existing.CanonicalJSON()
+		existingSize = uint64(len(existingJSON))
+		for i := 0; i < existing.SegmentCount; i++ {
+			seg, segErr := c.GetSegment(cid, i)
+			if segErr == nil {
+				existingSize += uint64(len(seg))
+			}
+		}
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return err
+	}
+
+	newCount := currentCount
+	newBytes := currentBytes
+	if existing == nil {
+		newCount++
+		newBytes += pinSize
+	} else {
+		newBytes = currentBytes - existingSize + pinSize
+	}
+
 	return c.store.WriteBatch(func(b storage.Batch) error {
 		if err := b.Put(manifestKey(cid), manifestJSON); err != nil {
 			return err
@@ -63,7 +115,10 @@ func (c *ContentStore) Pin(cid string, m *manifest.Manifest, segments [][]byte) 
 				return err
 			}
 		}
-		return nil
+		if err := putUint64(b, []byte(keyQuotaCount), uint64(newCount)); err != nil {
+			return err
+		}
+		return putUint64(b, []byte(keyQuotaBytes), newBytes)
 	})
 }
 
@@ -138,6 +193,30 @@ func (c *ContentStore) Unpin(cid string) error {
 	if err != nil {
 		return err
 	}
+
+	// Compute the byte footprint being released so counters stay accurate.
+	manifestJSON, _ := m.CanonicalJSON()
+	released := uint64(len(manifestJSON))
+	for i := 0; i < m.SegmentCount; i++ {
+		seg, err := c.GetSegment(cid, i)
+		if err == nil {
+			released += uint64(len(seg))
+		}
+	}
+
+	currentCount, currentBytes, err := c.Usage()
+	if err != nil {
+		return err
+	}
+	newCount := currentCount - 1
+	if newCount < 0 {
+		newCount = 0
+	}
+	newBytes := uint64(0)
+	if currentBytes > released {
+		newBytes = currentBytes - released
+	}
+
 	return c.store.WriteBatch(func(b storage.Batch) error {
 		if err := b.Delete(manifestKey(cid)); err != nil {
 			return err
@@ -147,7 +226,10 @@ func (c *ContentStore) Unpin(cid string) error {
 				return err
 			}
 		}
-		return nil
+		if err := putUint64(b, []byte(keyQuotaCount), uint64(newCount)); err != nil {
+			return err
+		}
+		return putUint64(b, []byte(keyQuotaBytes), newBytes)
 	})
 }
 
