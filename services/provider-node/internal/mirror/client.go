@@ -44,10 +44,29 @@ type Client struct {
 	// session the origin mirrors. Keyed by peer.ID; values persist
 	// across session lifecycles so the Fase 2.2 candidate ranker has
 	// stable history when re-selecting mirrors on the next WHIP session.
-	peerMu       sync.Mutex
-	peerMetrics  map[peer.ID]*HopMetrics
-	nextProbeID  atomic.Uint64
+	peerMu      sync.Mutex
+	peerMetrics map[peer.ID]*HopMetrics
+	nextProbeID atomic.Uint64
+
+	// cooldowns (Fase 2.2d) — when a mirror stream tears down due to
+	// sustained probe loss or degraded RTT, the peer enters cooldown
+	// to prevent thrashing. SelectTopK + PoolFetcher filter out peers
+	// in active cooldown so the ranker doesn't keep proposing a peer
+	// we just gave up on.
+	cooldownMu sync.Mutex
+	cooldowns  map[peer.ID]time.Time // peer → when the cooldown expires
 }
+
+// DefaultCooldownDuration per spec §7.2 — once a peer is dropped it
+// stays out of the candidate pool for 60s. Long enough to absorb
+// transient network weather; short enough to recover quickly when
+// the peer actually heals.
+const DefaultCooldownDuration = 60 * time.Second
+
+// ConsecutiveLossThreshold per spec §4.6 — five consecutive probe
+// timeouts = mirror considered unreachable. At 1 Hz probes that's
+// ≥5 seconds of silence, well past normal network jitter.
+const ConsecutiveLossThreshold = 5
 
 // ClientOptions configures NewClient.
 type ClientOptions struct {
@@ -78,7 +97,66 @@ func NewClient(h host.Host, peers []peer.ID, logger *slog.Logger, opts ClientOpt
 		log:         logger,
 		sendBuf:     sendBuf,
 		peerMetrics: make(map[peer.ID]*HopMetrics),
+		cooldowns:   make(map[peer.ID]time.Time),
 	}, nil
+}
+
+// EnterCooldown registers a peer as dropped for `duration`. After
+// that window the peer is eligible for re-selection. Zero duration
+// uses DefaultCooldownDuration.
+//
+// Idempotent — calling again extends the cooldown to max(existing, new).
+func (c *Client) EnterCooldown(p peer.ID, duration time.Duration) {
+	if duration == 0 {
+		duration = DefaultCooldownDuration
+	}
+	expiry := time.Now().Add(duration)
+	c.cooldownMu.Lock()
+	if existing, ok := c.cooldowns[p]; !ok || expiry.After(existing) {
+		c.cooldowns[p] = expiry
+	}
+	c.cooldownMu.Unlock()
+	c.log.Warn("peer entered cooldown",
+		"peer_id", p.String(),
+		"duration_ms", duration.Milliseconds(),
+		"reason", "drop",
+	)
+}
+
+// IsInCooldown returns true when the peer is currently cooling down.
+// Expired entries are lazily removed on the next call that observes them.
+func (c *Client) IsInCooldown(p peer.ID) bool {
+	now := time.Now()
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	expiry, ok := c.cooldowns[p]
+	if !ok {
+		return false
+	}
+	if now.After(expiry) {
+		delete(c.cooldowns, p)
+		return false
+	}
+	return true
+}
+
+// CooldownSnapshot returns a copy of active cooldowns keyed by peer ID
+// with their expiry. Used by SelectTopK to filter candidates and by
+// /mirrors/candidates for observability. Expired entries are pruned
+// on this call.
+func (c *Client) CooldownSnapshot() map[peer.ID]time.Time {
+	now := time.Now()
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	out := make(map[peer.ID]time.Time, len(c.cooldowns))
+	for p, exp := range c.cooldowns {
+		if now.After(exp) {
+			delete(c.cooldowns, p)
+			continue
+		}
+		out[p] = exp
+	}
+	return out
 }
 
 // PeerMetrics returns the HopMetrics for a given peer, creating one
@@ -149,6 +227,17 @@ func (c *Client) StartMirroringWithPeers(ctx context.Context, sess *whip.Session
 			c.log.Debug("skip self as mirror peer", "peer_id", p.String())
 			continue
 		}
+		// Fase 2.2d — never open a fresh stream to a peer that's
+		// cooling down from a recent drop. Dynamic SelectTopK already
+		// filters these out; static CSV callers might not, so we
+		// double-enforce here.
+		if c.IsInCooldown(p) {
+			c.log.Info("skip cooldowned mirror peer",
+				"peer_id", p.String(),
+				"session_id", sess.ID,
+			)
+			continue
+		}
 		stream, err := c.host.NewStream(ctx, p, MirrorProtocol)
 		if err != nil {
 			c.log.Warn("mirror open stream failed",
@@ -177,7 +266,7 @@ func (c *Client) StartMirroringWithPeers(ctx context.Context, sess *whip.Session
 		// owns writes. Multiple streams get multiple channels + gos;
 		// keeps wire ordering intact per peer while isolating stalls.
 		peerMetrics := c.PeerMetrics(p)
-		sink := newStreamSink(stream, c.log.With("peer_id", p.String(), "session_id", sess.ID), c.sendBuf, peerMetrics, &c.nextProbeID)
+		sink := newStreamSink(stream, c.log.With("peer_id", p.String(), "session_id", sess.ID), c.sendBuf, peerMetrics, &c.nextProbeID, p, c)
 		sess.AttachVideoSink(sink.video)
 		sess.AttachAudioSink(sink.audio)
 		go sink.run(ctx, sess)
@@ -220,6 +309,21 @@ type streamSink struct {
 
 	outstandingMu sync.Mutex
 	outstanding   map[uint64]time.Time
+
+	// consecutiveLoss (Fase 2.2d) — probes expired since the last echo.
+	// Reset to 0 on any successful echo (readEchoes). Origin tears
+	// down the stream when this hits ConsecutiveLossThreshold.
+	consecutiveLoss atomic.Uint32
+
+	// dropRequested becomes true when the sweep trips the loss threshold.
+	// The run goroutine picks it up on the next tick, signals the
+	// client to cooldown the peer, and exits cleanly.
+	dropRequested atomic.Bool
+
+	// peerID + client backref so a drop inside the sink can enter the
+	// per-peer cooldown on the parent Client.
+	peerID peer.ID
+	client *Client
 }
 
 type frameOut struct {
@@ -238,6 +342,8 @@ func newStreamSink(
 	buf int,
 	metrics *HopMetrics,
 	probeIDCounter *atomic.Uint64,
+	peerID peer.ID,
+	client *Client,
 ) *streamSink {
 	s := &streamSink{
 		stream:         stream,
@@ -247,6 +353,8 @@ func newStreamSink(
 		metrics:        metrics,
 		probeIDCounter: probeIDCounter,
 		outstanding:    make(map[uint64]time.Time),
+		peerID:         peerID,
+		client:         client,
 	}
 	s.video = func(pkt *rtp.Packet) error { return s.enqueue(FrameTypeVideoRTP, pkt) }
 	s.audio = func(pkt *rtp.Packet) error { return s.enqueue(FrameTypeAudioRTP, pkt) }
@@ -278,6 +386,12 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 		_ = WriteCloseFrame(s.stream)
 		_ = s.stream.Close()
 		close(s.closed)
+		// Fase 2.2d — if exit was triggered by sustained probe loss,
+		// enter the peer into Client-level cooldown so subsequent
+		// SelectTopK / PoolFetcher calls skip them until recovery.
+		if s.dropRequested.Load() && s.client != nil {
+			s.client.EnterCooldown(s.peerID, DefaultCooldownDuration)
+		}
 		// Fase 2.2 — emit per-peer origin-side RTT stats when the
 		// stream ends. This is the authoritative (echo-back) number.
 		s.log.Info("mirror origin-side stats",
@@ -287,6 +401,7 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 			"rtt_p95_ns", s.metrics.EchoP95Nanos(),
 			"rtt_p99_ns", s.metrics.EchoP99Nanos(),
 			"rtt_ema_ns", s.metrics.EchoEMA().Nanoseconds(),
+			"dropped", s.dropRequested.Load(),
 		)
 	}()
 	dropped := 0
@@ -333,6 +448,13 @@ func (s *streamSink) run(ctx context.Context, sess *whip.Session) {
 			probeTimer.Reset(probeInterval())
 		case <-sweepTicker.C:
 			s.sweepOutstanding(5 * time.Second)
+			// Fase 2.2d — sweep may have tripped the loss threshold.
+			// We check AFTER the sweep so the drop signal surfaces
+			// within the same 1s tick rather than waiting another
+			// cycle.
+			if s.dropRequested.Load() {
+				return
+			}
 		}
 	}
 }
@@ -381,6 +503,10 @@ func (s *streamSink) readEchoes(ctx context.Context, sess *whip.Session) {
 		}
 		rtt := time.Since(sentAt)
 		s.metrics.RecordEcho(rtt)
+		// Fase 2.2d — echo landed, reset the consecutive-loss counter.
+		// The counter tracks only UNINTERRUPTED losses; a single late
+		// echo clears it.
+		s.consecutiveLoss.Store(0)
 	}
 }
 
@@ -407,8 +533,23 @@ func (s *streamSink) sweepOutstanding(maxAge time.Duration) {
 		}
 	}
 	s.outstandingMu.Unlock()
+	if lost == 0 {
+		return
+	}
 	for i := uint32(0); i < lost; i++ {
 		s.metrics.IncProbeLoss()
+	}
+	// Fase 2.2d — track CONSECUTIVE losses (reset on echo receipt).
+	// Once we cross the threshold, request a drop: the run goroutine
+	// sees dropRequested on its next loop iteration and exits cleanly,
+	// triggering stream close + peer cooldown.
+	cl := s.consecutiveLoss.Add(lost)
+	if cl >= ConsecutiveLossThreshold && !s.dropRequested.Load() {
+		s.dropRequested.Store(true)
+		s.log.Warn("mirror drop requested — consecutive probe losses",
+			"consecutive_loss", cl,
+			"threshold", ConsecutiveLossThreshold,
+		)
 	}
 }
 

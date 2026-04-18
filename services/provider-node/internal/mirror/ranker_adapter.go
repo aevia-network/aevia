@@ -169,6 +169,20 @@ func (a *RankerAdapter) SelectTopK(_ context.Context, hint ViewerHint, k int) []
 	if len(httpxCands) == 0 {
 		return nil
 	}
+	// Fase 2.2d — drop cooldowned peers BEFORE scoring so a bad mirror
+	// doesn't keep reappearing in /mirrors/candidates during its
+	// cooldown window, and the ranker doesn't keep re-proposing it.
+	if a.client != nil {
+		filtered := httpxCands[:0]
+		for _, c := range httpxCands {
+			pid, err := peer.Decode(c.PeerID)
+			if err == nil && a.client.IsInCooldown(pid) {
+				continue
+			}
+			filtered = append(filtered, c)
+		}
+		httpxCands = filtered
+	}
 	scored := a.Score(httpxCands, hint.Region)
 	if len(scored) > k {
 		scored = scored[:k]
