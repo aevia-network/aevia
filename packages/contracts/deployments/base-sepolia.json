@@ -34,6 +34,101 @@
         "decimals": 6,
         "issuer": "Circle"
       }
+    },
+    "RiskOracle": {
+      "address": "0xa5E6c7d8F5964f76D9f875819652a1ad2aE963AD",
+      "deployBlock": 40382423,
+      "deployTxHash": "0x835d47674887024901a2b9065c0dbdd66f7a57b98a33778ba8907e567d0a430a",
+      "deploymentTimestamp": "2026-04-18T16:46:07Z",
+      "deployer": "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+      "gasUsed": 855427,
+      "constructor": {
+        "scoringService": "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+        "council": "0x4934f9BA21F7Af797d4b89ead35Cf28Cdc1E72Ae"
+      },
+      "verified": {
+        "provider": "Sourcify",
+        "jobId": "370a6db3-00d0-47c6-ae4c-9a4a09b68cc5",
+        "status": "match"
+      },
+      "constants": {
+        "BPS_MAX": 10000,
+        "MAX_PUBLISH_SKEW": 3600
+      },
+      "notes": {
+        "scoringServiceRotation": "onlyCouncil via rotateScoringServiceKey — RFC-6 §8.4 invariant"
+      }
+    },
+    "BoostRouter": {
+      "address": "0xf566C64a4052A21f95C267c58517E956fa2e8F82",
+      "deployBlock": 40382423,
+      "deployTxHash": "0xb75a88cf4da81c73b52985519d84d7e922202d056d3a9cafcd8cac1bdd9e3885",
+      "deploymentTimestamp": "2026-04-18T16:46:07Z",
+      "deployer": "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+      "gasUsed": 817869,
+      "constructor": {
+        "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "registry": "0x07ffbcB245bcD8aA08F8dA75B2AeDE750d5592F0",
+        "oracle": "0xa5E6c7d8F5964f76D9f875819652a1ad2aE963AD",
+        "persistencePool": "0x735C363a6df4651ABD8b1081F0b73fdAd98a4a93",
+        "llcTreasury": "0xA98A148bD5493ee6F1AF2344C384E77fAEF2a2Ef",
+        "councilFund": "0x7F99fFA84589C40a0FFc15A9451205dbF4a93EB1",
+        "council": "0x4934f9BA21F7Af797d4b89ead35Cf28Cdc1E72Ae"
+      },
+      "verified": {
+        "provider": "Sourcify",
+        "jobId": "cc6aa85d-9b0d-4c00-8bb3-c9099f544973",
+        "status": "match"
+      },
+      "constants": {
+        "BPS_TOTAL": 10000,
+        "THETA_FEED_BPS": 3000,
+        "MIN_BOOST": 500000
+      },
+      "defaultSplit": {
+        "creatorBps": 5000,
+        "poolBps": 3000,
+        "llcBps": 1900,
+        "councilBps": 100,
+        "totalBps": 10000,
+        "_comment": "RFC-8 §4.3 default — Council-governable via setSplit"
+      }
+    }
+  },
+  "safes": {
+    "LLCTreasury": {
+      "address": "0xA98A148bD5493ee6F1AF2344C384E77fAEF2a2Ef",
+      "type": "Gnosis Safe",
+      "threshold": "2-of-2",
+      "signers": [
+        "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+        "0x1fB87804d42DAe561F1F10119408C595a89dF8b2"
+      ],
+      "createdTimestamp": "2026-04-18T16:17:14Z",
+      "notes": "Signer 2 is Leandro MM Account 1 (same device). Rotate to real spouse wallet via Safe swapOwner before mainnet value."
+    },
+    "CouncilFund": {
+      "address": "0x7F99fFA84589C40a0FFc15A9451205dbF4a93EB1",
+      "type": "Gnosis Safe",
+      "threshold": "2-of-2",
+      "signers": [
+        "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+        "0x1fB87804d42DAe561F1F10119408C595a89dF8b2"
+      ],
+      "createdTimestamp": "2026-04-18T16:17:14Z",
+      "notes": "Signer 2 is Leandro MM Account 1 (same device). Rotate to real spouse wallet via Safe swapOwner before mainnet value."
+    },
+    "Council": {
+      "address": "0x4934f9BA21F7Af797d4b89ead35Cf28Cdc1E72Ae",
+      "type": "Gnosis Safe",
+      "threshold": "2-of-2",
+      "signers": [
+        "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+        "0x1fB87804d42DAe561F1F10119408C595a89dF8b2"
+      ],
+      "createdTimestamp": "2026-04-18T16:17:14Z",
+      "role": "Sole authority for BoostRouter.setSplit / setCouncil and RiskOracle.contestScore / resolveContest / rotateScoringServiceKey / setCouncil",
+      "notes": "Signer 2 is Leandro MM Account 1 (same device). Rotate to real spouse wallet via Safe swapOwner before mainnet value."
     }
   }
 }
