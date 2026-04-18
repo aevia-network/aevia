@@ -5,6 +5,7 @@ import {
   LiveTile,
   MeshDot,
   PermanenceStrip,
+  PersonasStrip,
   PresenceRow,
   RankingSwitcher,
   type RankingTemplate,
@@ -59,6 +60,11 @@ export function FeedScreen({ viewer, lives }: FeedScreenProps) {
       <main className="mx-auto flex max-w-2xl flex-col gap-10 px-4 pt-6 pb-10">
         <RankingSection template={template} onTemplateChange={setTemplate} />
         <LiveNowStrip lives={lives} />
+        {/* PersonasStrip mirrors the 8 canonical personas declared in
+            `aevia.network`'s `landing.personas`. Placed after the live rail so
+            the viewer first sees what's on air, then immediately gets the
+            "this is for me" answer regardless of niche. */}
+        <PersonasStrip />
         <CuratorialCard />
         <FeedPostsPreview />
         <CreatorsGrid />
