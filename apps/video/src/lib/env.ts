@@ -71,4 +71,15 @@ export const clientEnv = {
     | 'production',
   streamCustomerCode: process.env.NEXT_PUBLIC_STREAM_CUSTOMER_CODE,
   privyAppId: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
+  /**
+   * Dev-only bypass that skips Privy entirely. When true:
+   *   - Providers.tsx renders children without AeviaPrivyProvider, so
+   *     @walletconnect/* is never imported (fixes the Next dev SSR 500
+   *     from walletconnect/types bundling).
+   *   - Server-side readAeviaSession returns a stable mock session.
+   *   - Sign-in UI on / is replaced with a banner + direct link to /feed.
+   * MUST be falsy in prod — Cloudflare Pages deploys read
+   * NEXT_PUBLIC_AEVIA_DEV_BYPASS_AUTH from the project env.
+   */
+  devBypassAuth: process.env.NEXT_PUBLIC_AEVIA_DEV_BYPASS_AUTH === 'true',
 } as const;

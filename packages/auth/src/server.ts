@@ -151,7 +151,39 @@ function userFromIdentityTokenPayload(
   } as unknown as User;
 }
 
+/**
+ * Fixed dev session used when AEVIA_DEV_BYPASS_AUTH=true. The address
+ * is a burn-after-reading test account; do not send funds. The DID is
+ * derived from it via the usual chain-scoped PKH rule, so downstream
+ * logic (WHIP X-Aevia-DID header, creator attribution in the provider
+ * node logs, signed manifests once Protocol Spec §3 lands) behaves
+ * identically to a real Privy session.
+ */
+const DEV_BYPASS_ADDRESS = '0x000000000000000000000000000000000000dEaD' as const;
+
+function devBypassSession(): AeviaSession {
+  return {
+    userId: 'dev-bypass',
+    address: DEV_BYPASS_ADDRESS,
+    did: addressToDid(DEV_BYPASS_ADDRESS, appChainId()),
+    displayName: 'dev',
+    loginMethod: 'unknown',
+    expiresAt: 0,
+  };
+}
+
 export async function readAeviaSession(): Promise<AeviaSession | null> {
+  // Dev-only short-circuit. Both the server-side flag and the public one
+  // are checked so that server components running on the edge still see
+  // the bypass (the public var survives the build; the server var
+  // matches client-side providers.tsx behavior).
+  if (
+    process.env.AEVIA_DEV_BYPASS_AUTH === 'true' ||
+    process.env.NEXT_PUBLIC_AEVIA_DEV_BYPASS_AUTH === 'true'
+  ) {
+    return devBypassSession();
+  }
+
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
   if (!appId) return null;
 

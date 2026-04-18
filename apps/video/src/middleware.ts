@@ -31,6 +31,16 @@ const PRIVY_COOKIE_NAMES = [
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
 
+  // Dev-bypass: skip the cookie gate so every protected route renders
+  // from a mock session. See packages/auth/src/server.ts for the
+  // matching server-side short-circuit. MUST stay false in production.
+  if (
+    process.env.AEVIA_DEV_BYPASS_AUTH === 'true' ||
+    process.env.NEXT_PUBLIC_AEVIA_DEV_BYPASS_AUTH === 'true'
+  ) {
+    return NextResponse.next();
+  }
+
   if (searchParams.get('privy_oauth_code')) return NextResponse.next();
 
   const isProtected = PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`));
