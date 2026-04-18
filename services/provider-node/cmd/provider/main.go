@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/tlsauto"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/whip"
 	"github.com/Leeaandrob/aevia/services/provider-node/storage"
 )
@@ -160,6 +162,7 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	// serves /live/{id}/playlist.m3u8 + init.mp4 + segment/{n}.
 	whipSrv, err := whip.NewServer(whip.Options{
 		AuthorisedDIDs: splitCSV(cfg.AllowedDIDs),
+		PublicIPs:      splitCSV(cfg.PublicIPs),
 	})
 	if err != nil {
 		return err
@@ -220,6 +223,43 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	go func() { tcpErr <- srv.ServeHTTPOn(ctx, tcpListener) }()
 	go func() { libp2pErr <- srv.ServeLibp2p(ctx) }()
 
+	// Optional HTTPS transport. When TLS is configured, we serve the
+	// same mux on :443 (or cfg.TLSAddr) with a Let's Encrypt cert
+	// obtained via Cloudflare DNS-01. Browsers coming from
+	// https://aevia.video can then POST WHIP / GET HLS without the
+	// mixed-content block. HTTP :8080 stays up for local dev probes
+	// and for relays inside the mesh.
+	tlsCfg := tlsauto.Config{
+		Domain:             cfg.TLSDomain,
+		Email:              cfg.TLSEmail,
+		CloudflareAPIToken: cfg.TLSCloudflareAPIToken,
+		CacheDir:           cfg.TLSCacheDir,
+		Staging:            cfg.TLSStaging,
+	}
+	tlsErr := make(chan error, 1)
+	if tlsCfg.Enabled() {
+		mgr, err := tlsauto.New(tlsCfg)
+		if err != nil {
+			return fmt.Errorf("tls: %w", err)
+		}
+		logger.Info().
+			Str("event", "tls_provisioning").
+			Str("domain", tlsCfg.Domain).
+			Bool("staging", tlsCfg.Staging).
+			Msg("obtaining Let's Encrypt certificate via Cloudflare DNS-01")
+		if err := mgr.EnsureCertificate(ctx); err != nil {
+			return fmt.Errorf("tls: obtain certificate: %w", err)
+		}
+		logger.Info().
+			Str("event", "tls_ready").
+			Str("domain", tlsCfg.Domain).
+			Str("addr", tlsListenAddr(cfg.TLSAddr)).
+			Msg("HTTPS ready")
+		go func() {
+			tlsErr <- mgr.ServeHTTPS(ctx, tlsListenAddr(cfg.TLSAddr), srv.Handler())
+		}()
+	}
+
 	select {
 	case <-stop:
 		logger.Info().Str("event", "shutdown_signal").Msg("shutdown signal received")
@@ -230,6 +270,10 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	case err := <-libp2pErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error().Err(err).Str("event", "libp2p_transport_error").Msg("libp2p transport error")
+		}
+	case err := <-tlsErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error().Err(err).Str("event", "tls_transport_error").Msg("tls transport error")
 		}
 	}
 
@@ -273,6 +317,15 @@ func boot_message(mode config.Mode) string {
 		return "relay-node started"
 	}
 	return "provider-node started"
+}
+
+// tlsListenAddr returns the HTTPS listen address, falling back to
+// :443 when the operator didn't override it via --tls-addr.
+func tlsListenAddr(addr string) string {
+	if addr == "" {
+		return ":443"
+	}
+	return addr
 }
 
 // splitCSV trims and splits a comma-separated DID list. Empty input

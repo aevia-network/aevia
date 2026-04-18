@@ -90,6 +90,13 @@ type Options struct {
 	// authentication is DISABLED — useful for local dev + CI, unsafe
 	// for public deploys. Production MUST supply this.
 	AuthorisedDIDs []string
+	// PublicIPs is the list of reachable public IPs for this node.
+	// When set, pion replaces its local host ICE candidates with
+	// these addresses so browsers behind/outside the same NAT can
+	// reach the node's UDP sockets. Required for any deployment
+	// where the node runs behind 1:1 NAT (cloud VMs that expose a
+	// public IP but internally bind a private RFC1918 address).
+	PublicIPs []string
 }
 
 // NewServer builds a whip.Server with a pion/webrtc API configured for
@@ -135,7 +142,14 @@ func NewServer(opts Options) (*Server, error) {
 	}, webrtc.RTPCodecTypeAudio); err != nil {
 		return nil, fmt.Errorf("whip: register opus codec: %w", err)
 	}
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
+	settings := webrtc.SettingEngine{}
+	if len(opts.PublicIPs) > 0 {
+		// NAT 1:1 rewrite — pion replaces its discovered host IPs with
+		// the operator-supplied public IPs when building ICE candidates.
+		// Without this, ICE stalls forever for clients outside the NAT.
+		settings.SetNAT1To1IPs(opts.PublicIPs, webrtc.ICECandidateTypeHost)
+	}
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithSettingEngine(settings))
 	dids := make(map[string]struct{}, len(opts.AuthorisedDIDs))
 	for _, did := range opts.AuthorisedDIDs {
 		if did != "" {

@@ -1,5 +1,5 @@
 [Unit]
-Description=Aevia Relay Node (Circuit Relay v2 + Kademlia DHT + /dht/resolve proxy)
+Description=Aevia Node (Provider / Relay — libp2p + DHT + WHIP + optional HTTPS)
 Documentation=https://github.com/Leeaandrob/aevia
 After=network-online.target
 Wants=network-online.target
@@ -9,17 +9,21 @@ Type=simple
 User=aevia
 Group=aevia
 WorkingDirectory=/var/lib/aevia-node
+# EnvironmentFile drives the whole config — AEVIA_MODE, AEVIA_LISTEN,
+# AEVIA_HTTP_ADDR, AEVIA_BOOTSTRAP, AEVIA_RELAY_PEERS, AEVIA_TLS_DOMAIN,
+# AEVIA_CF_API_TOKEN, etc. See deploy/systemd/env.example.
 EnvironmentFile=/etc/aevia-node/env
-ExecStart=/usr/local/bin/aevia-node run \
-  --mode=relay \
-  --listen=/ip4/0.0.0.0/tcp/4001 \
-  --http-addr=0.0.0.0:8080 \
-  --force-reachability=public \
-  --data-dir=/var/lib/aevia-node
+ExecStart=/usr/local/bin/aevia-node run --data-dir=/var/lib/aevia-node
 
 Restart=always
 RestartSec=5s
 TimeoutStopSec=30s
+
+# Allow binding to privileged ports (443, 80) without running as root —
+# needed by provider nodes that serve HTTPS. Relay nodes that only bind
+# 4001/8080 can drop this cap with no effect.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 # Hardening
 NoNewPrivileges=true
@@ -33,10 +37,11 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
 
-# Resource caps (Relay Node typical load)
+# Resource caps (provider-node with WHIP ingest + CMAF segmenter + TLS
+# needs more headroom than a relay; keep MemoryMax generous).
 LimitNOFILE=65536
-MemoryHigh=512M
-MemoryMax=1G
+MemoryHigh=1G
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

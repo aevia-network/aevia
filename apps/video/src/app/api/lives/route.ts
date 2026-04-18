@@ -4,19 +4,21 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
+type LiveBackend = 'cloudflare' | 'aevia-mesh';
+
 /**
- * Live input creation. Two backends:
+ * Live input creation. The caller picks the backend per broadcast:
  *
- *   1. **Provider-node mesh** (M8 zero-Cloudflare): when `PROVIDER_BASE_URL`
- *      is set, we just echo the WHIP endpoint; the browser POSTs SDP
- *      directly to the node, which mints the sessionID and returns it via
- *      the `X-Aevia-Session-ID` header. No Cloudflare round-trip.
+ *   - `cloudflare` (default): classic Stream live input — WHIP + WHEP
+ *     URLs come from Cloudflare.
+ *   - `aevia-mesh`: zero-Cloudflare path. Browser posts WHIP directly
+ *     to the mesh URL published via `NEXT_PUBLIC_AEVIA_MESH_URL`; the
+ *     provider-node mints the sessionID via the X-Aevia-Session-ID
+ *     response header. No Cloudflare round-trip.
  *
- *   2. **Cloudflare Stream** (legacy): original path, `createLiveInput`
- *      mints a uid and returns WHIP/WHEP URLs Cloudflare owns.
- *
- * The GET handler was removed 2026-04-18 — feed/dashboard/discover fetch
- * `listLiveInputs()` server-side directly.
+ * The UI on /live/new shows a radio that sets `body.backend`. If omitted
+ * we fall back to cloudflare — safest default while the mesh is
+ * experimental.
  */
 export async function POST(request: Request) {
   const session = await readAeviaSession();
@@ -25,25 +27,31 @@ export async function POST(request: Request) {
   }
 
   let title: string | undefined;
+  let backend: LiveBackend = 'cloudflare';
   try {
-    const body = (await request.json()) as { title?: string };
+    const body = (await request.json()) as { title?: string; backend?: LiveBackend };
     title = body.title;
+    if (body.backend === 'aevia-mesh') backend = 'aevia-mesh';
   } catch {
     // body optional
   }
 
-  const providerBase = process.env.PROVIDER_BASE_URL?.trim();
-  if (providerBase) {
-    // Aevia provider-node path. The `uid` is deferred — it's the sessionID
-    // the node will mint when the browser posts SDP. Client fills it in
-    // from the WHIP response header.
+  if (backend === 'aevia-mesh') {
+    const meshUrl = process.env.NEXT_PUBLIC_AEVIA_MESH_URL?.trim();
+    if (!meshUrl) {
+      return NextResponse.json(
+        { error: 'mesh backend not configured on this deployment' },
+        { status: 400 },
+      );
+    }
+    const base = meshUrl.replace(/\/+$/, '');
     return NextResponse.json(
       {
-        backend: 'aevia-mesh',
-        uid: null,
-        whipUrl: `${providerBase.replace(/\/+$/, '')}/whip`,
+        backend,
+        uid: null, // provider-node mints it at WHIP time
+        whipUrl: `${base}/whip`,
         whepUrl: null,
-        hlsBaseUrl: providerBase.replace(/\/+$/, ''),
+        hlsBaseUrl: base,
         creator: session.displayName,
         creatorAddress: session.address,
         creatorDid: session.did,
@@ -62,7 +70,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(
       {
-        backend: 'cloudflare-stream',
+        backend,
         uid: live.uid,
         whipUrl: live.webRTC.url,
         whepUrl: live.webRTCPlayback.url,

@@ -40,17 +40,18 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 type ConnectionStatus = 'idle' | 'requesting-devices' | 'ready' | 'connecting' | 'live' | 'error';
 type RankingTemplate = 'familia' | 'padrao' | 'ministerio';
+type LiveBackend = 'cloudflare' | 'aevia-mesh';
 
 interface CreatedLive {
   uid: string;
   whipUrl: string;
   whepUrl: string | null;
   creator: string;
-  backend?: 'cloudflare-stream' | 'aevia-mesh';
+  backend: LiveBackend;
 }
 
 interface CreateLiveResponse {
-  backend: 'cloudflare-stream' | 'aevia-mesh';
+  backend: LiveBackend;
   uid: string | null;
   whipUrl: string;
   whepUrl: string | null;
@@ -60,6 +61,9 @@ interface CreateLiveResponse {
   creatorDid: string;
   title: string | null;
 }
+
+/** Compile-time flag surfaced from next config. */
+const MESH_AVAILABLE = Boolean(process.env.NEXT_PUBLIC_AEVIA_MESH_URL?.trim());
 
 interface DirectUploadResponse {
   uploadUrl: string;
@@ -87,6 +91,7 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
   const [description, setDescription] = useState('');
   const [template, setTemplate] = useState<RankingTemplate>('padrao');
   const [aupAccepted, setAupAccepted] = useState(false);
+  const [backend, setBackend] = useState<LiveBackend>('cloudflare');
 
   const { startUpload } = useUploads();
 
@@ -120,7 +125,7 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
       const res = await fetch('/api/lives', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: title.trim() || undefined }),
+        body: JSON.stringify({ title: title.trim() || undefined, backend }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -170,11 +175,11 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
       setErrorMsg(err instanceof Error ? err.message : 'falha ao iniciar transmissão');
       setStatus('error');
     }
-  }, [aupAccepted, title]);
+  }, [aupAccepted, title, backend]);
 
   const stopLive = useCallback(async () => {
     const liveUid = created?.uid;
-    const backend = created?.backend ?? 'cloudflare-stream';
+    const createdBackend = created?.backend ?? 'cloudflare';
     const recorder = recorderRef.current;
     recorderRef.current = null;
 
@@ -192,7 +197,7 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
     // path pins each live segment on the provider-node itself, so the
     // replay is reconstructed by announcing the final manifest CID via
     // DHT — no VOD upload needed. That wire-up lands in M8.5.
-    if (backend !== 'cloudflare-stream') {
+    if (createdBackend !== 'cloudflare') {
       recorder?.cancel();
       return;
     }
@@ -229,7 +234,11 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
     };
   }, []);
 
-  const shareUrl = created ? `${window.location.origin}/live/${created.uid}` : null;
+  const shareUrl = created
+    ? `${window.location.origin}${
+        created.backend === 'aevia-mesh' ? '/live/mesh/' : '/live/'
+      }${created.uid}`
+    : null;
 
   const copyShareUrl = () => {
     if (!shareUrl) return;
@@ -270,6 +279,8 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
           <SignatureSection did={did} address={address} isLive={isLive} />
 
           <NetworkStatusMock />
+
+          <BackendPicker backend={backend} onChange={setBackend} disabled={isLive} />
 
           <AupAcknowledgment checked={aupAccepted} onChange={setAupAccepted} disabled={isLive} />
 
@@ -658,6 +669,98 @@ function Stat({ label, value }: { label: string; value: string }) {
       </dt>
       <dd className="mt-0.5 font-body font-medium text-on-surface text-sm lowercase">{value}</dd>
     </div>
+  );
+}
+
+// ---- Backend picker (cloudflare vs aevia-mesh) --------------------------
+
+function BackendPicker({
+  backend,
+  onChange,
+  disabled,
+}: {
+  backend: LiveBackend;
+  onChange: (b: LiveBackend) => void;
+  disabled: boolean;
+}) {
+  return (
+    <section aria-labelledby="backend-heading" className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          id="backend-heading"
+          className="font-headline font-semibold text-lg text-on-surface lowercase"
+        >
+          caminho da transmissão
+        </h2>
+        {!MESH_AVAILABLE && (
+          <span className="font-label text-[10px] text-on-surface/40 uppercase tracking-[0.15em]">
+            mesh indisponível
+          </span>
+        )}
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="backend da transmissão"
+        className={`grid grid-cols-1 gap-2 ${disabled ? 'pointer-events-none opacity-50' : ''}`}
+      >
+        <BackendOption
+          active={backend === 'cloudflare'}
+          onClick={() => onChange('cloudflare')}
+          title="via cloudflare"
+          tag="padrão · robusto"
+          description="WebRTC ingest + WHEP via Cloudflare Stream. Escala global, latência baixa, VOD automático."
+        />
+        <BackendOption
+          active={backend === 'aevia-mesh'}
+          onClick={() => MESH_AVAILABLE && onChange('aevia-mesh')}
+          disabled={!MESH_AVAILABLE}
+          title="via rede aevia"
+          tag="experimental · p2p"
+          description="Ingest direto no provider-node aevia. Zero intermediário; cada segmento é pinado na rede. HLS ~10s de latência."
+        />
+      </div>
+    </section>
+  );
+}
+
+function BackendOption({
+  active,
+  onClick,
+  title,
+  tag,
+  description,
+  disabled = false,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  tag: string;
+  description: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      // biome-ignore lint/a11y/useSemanticElements: ARIA-APG radiogroup pattern.
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex cursor-pointer flex-col gap-1 rounded-md p-4 text-left transition-colors ${
+        active ? 'bg-primary/10 ring-2 ring-primary' : 'bg-surface-container hover:bg-surface-high'
+      } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="font-headline font-semibold text-base text-on-surface lowercase">
+          {title}
+        </span>
+        <span className="font-label text-[10px] text-on-surface/60 uppercase tracking-[0.15em]">
+          {tag}
+        </span>
+      </span>
+      <span className="font-body text-on-surface/70 text-sm">{description}</span>
+    </button>
   );
 }
 

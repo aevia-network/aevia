@@ -39,6 +39,29 @@ type Config struct {
 	// AllowedDIDs is the comma-separated creator allowlist passed to
 	// whip.Options.AuthorisedDIDs. Empty disables auth (dev/CI only).
 	AllowedDIDs string
+	// PublicIPs is the comma-separated list of reachable public IPv4/v6
+	// addresses the node lives at from the internet's perspective. On
+	// cloud VMs with 1:1 NAT (public IP → private RFC1918 interface),
+	// setting this is required so pion's ICE candidates point at the
+	// reachable address instead of the private one.
+	PublicIPs string
+	// TLSDomain is the public hostname the node serves HTTPS under.
+	// Empty disables TLS (HTTP-only). Example: "provider-sp.aevia.network".
+	TLSDomain string
+	// TLSEmail is passed to Let's Encrypt as the ACME account contact.
+	TLSEmail string
+	// TLSCloudflareAPIToken is a Cloudflare API token with
+	// Zone > DNS > Edit scope, used for DNS-01 challenges against
+	// TLSDomain's parent zone.
+	TLSCloudflareAPIToken string
+	// TLSAddr is the listen address for HTTPS traffic. Default ":443".
+	TLSAddr string
+	// TLSCacheDir is where certmagic persists accounts + issued certs.
+	// Default "~/.aevia/provider-node/tls".
+	TLSCacheDir string
+	// TLSStaging targets LE's staging endpoint — certs browsers reject —
+	// to dodge the production rate-limit during first-boot smoke tests.
+	TLSStaging bool
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -75,6 +98,13 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.RelayPeers, "relay-peers", cfg.RelayPeers, "comma-separated /p2p-terminated multiaddrs of Circuit Relay v2 nodes to reserve slots on (for NAT Provider Nodes)")
 	fs.StringVar(&cfg.ForceReachability, "force-reachability", cfg.ForceReachability, "override AutoNAT reachability: \"public\", \"private\", or empty")
 	fs.StringVar(&cfg.AllowedDIDs, "allowed-dids", cfg.AllowedDIDs, "comma-separated WHIP creator DID allowlist (empty disables auth)")
+	fs.StringVar(&cfg.PublicIPs, "public-ips", cfg.PublicIPs, "comma-separated public IPs this node is reachable at (needed for NAT 1:1 ICE)")
+	fs.StringVar(&cfg.TLSDomain, "tls-domain", cfg.TLSDomain, "public hostname for auto-HTTPS via Let's Encrypt DNS-01 (empty disables TLS)")
+	fs.StringVar(&cfg.TLSEmail, "tls-email", cfg.TLSEmail, "contact email registered with Let's Encrypt")
+	fs.StringVar(&cfg.TLSCloudflareAPIToken, "tls-cloudflare-api-token", cfg.TLSCloudflareAPIToken, "Cloudflare API token (Zone:DNS:Edit) for DNS-01 challenges")
+	fs.StringVar(&cfg.TLSAddr, "tls-addr", cfg.TLSAddr, "HTTPS listen address (default :443 when --tls-domain is set)")
+	fs.StringVar(&cfg.TLSCacheDir, "tls-cache-dir", cfg.TLSCacheDir, "directory where issued TLS certs are cached (default ~/.aevia/provider-node/tls)")
+	fs.BoolVar(&cfg.TLSStaging, "tls-staging", cfg.TLSStaging, "use LE staging CA instead of production (for first-boot tests)")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -122,6 +152,27 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_ALLOWED_DIDS"); v != "" {
 		cfg.AllowedDIDs = v
+	}
+	if v := os.Getenv("AEVIA_PUBLIC_IPS"); v != "" {
+		cfg.PublicIPs = v
+	}
+	if v := os.Getenv("AEVIA_TLS_DOMAIN"); v != "" {
+		cfg.TLSDomain = v
+	}
+	if v := os.Getenv("AEVIA_TLS_EMAIL"); v != "" {
+		cfg.TLSEmail = v
+	}
+	if v := os.Getenv("AEVIA_CF_API_TOKEN"); v != "" {
+		cfg.TLSCloudflareAPIToken = v
+	}
+	if v := os.Getenv("AEVIA_TLS_ADDR"); v != "" {
+		cfg.TLSAddr = v
+	}
+	if v := os.Getenv("AEVIA_TLS_CACHE_DIR"); v != "" {
+		cfg.TLSCacheDir = v
+	}
+	if v := os.Getenv("AEVIA_TLS_STAGING"); v == "1" || v == "true" {
+		cfg.TLSStaging = true
 	}
 }
 
