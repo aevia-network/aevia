@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/storage"
 )
 
 const shutdownGracePeriod = 10 * time.Second
@@ -105,8 +108,35 @@ func run(args []string, logger zerolog.Logger) error {
 }
 
 func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zerolog.Logger, stop <-chan os.Signal, cfg config.Config, d *aeviadht.DHT, n *node.Node) error {
+	pinPath := filepath.Join(cfg.DataDir, "pinning")
+	pinStore, err := storage.Open(storage.Options{Path: pinPath, Silent: true})
+	if err != nil {
+		return err
+	}
+	defer pinStore.Close()
+
+	cs := pinning.NewContentStore(pinStore)
+
+	// Announce every already-pinned CID via the DHT. Keeps the network
+	// convergent with whatever the operator has on disk, regardless of
+	// when the node last booted.
+	pinned, err := cs.List()
+	if err != nil {
+		return err
+	}
+	pinCount, bytesUsed, _ := cs.Usage()
+	logger.Info().
+		Int("pin_count", pinCount).
+		Uint64("bytes_used", bytesUsed).
+		Int("cids_to_announce", len(pinned)).
+		Str("event", "pin_store_loaded").
+		Msg("loaded persistent pin set")
+	if len(pinned) > 0 {
+		go d.RefreshLoop(ctx, pinned, aeviadht.DefaultRefreshPeriod)
+	}
+
 	srv := httpx.NewServer(n.Host())
-	content.Register(srv)
+	content.NewHandlers().WithSource(cs).Register(srv)
 
 	tcpListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
