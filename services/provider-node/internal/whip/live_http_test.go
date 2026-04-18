@@ -68,7 +68,7 @@ func TestLivePlaylistReflectsSegmentCount(t *testing.T) {
 	body := rec.Body.String()
 	must := []string{
 		"#EXTM3U",
-		"#EXT-X-VERSION:7",
+		"#EXT-X-VERSION:9",
 		"#EXT-X-TARGETDURATION:6",
 		"#EXT-X-MAP:URI=\"/live/s_play/init.mp4\"",
 		"/live/s_play/segment/0",

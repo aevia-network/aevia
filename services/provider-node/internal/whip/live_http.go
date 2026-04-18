@@ -71,6 +71,7 @@ func (r *LiveRouter) Register(reg HandlerRegistrar) {
 	reg.HandleFunc("GET /live/{sessionID}/playlist.m3u8", r.servePlaylist)
 	reg.HandleFunc("GET /live/{sessionID}/init.mp4", r.serveInit)
 	reg.HandleFunc("GET /live/{sessionID}/segment/{n}", r.serveSegment)
+	reg.HandleFunc("GET /live/{sessionID}/segment/{n}/part/{p}", r.servePart)
 	reg.HandleFunc("GET /live/{sessionID}/manifest.json", r.serveManifest)
 }
 
@@ -99,14 +100,34 @@ func (r *LiveRouter) servePlaylist(w http.ResponseWriter, req *http.Request) {
 
 	var b strings.Builder
 	b.WriteString("#EXTM3U\n")
-	b.WriteString("#EXT-X-VERSION:7\n")
+	// EXT-X-VERSION:9 is Apple's LL-HLS baseline — required once we
+	// emit EXT-X-PART / EXT-X-PART-INF / EXT-X-SERVER-CONTROL.
+	b.WriteString("#EXT-X-VERSION:9\n")
 	b.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", TargetSegmentDuration))
+	b.WriteString(fmt.Sprintf("#EXT-X-PART-INF:PART-TARGET=%.1f\n", float64(PartTargetDuration)))
+	// 3 × PART-TARGET = one full segment's worth of hold-back is the
+	// Apple spec recommendation for LL-HLS so players have room to
+	// rebuffer without rebuffering to the live edge.
+	b.WriteString(fmt.Sprintf("#EXT-X-SERVER-CONTROL:PART-HOLD-BACK=%.1f\n", float64(PartTargetDuration*3)))
 	b.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
 	b.WriteString(fmt.Sprintf("#EXT-X-MAP:URI=\"/live/%s/init.mp4\"\n", id))
 
 	for i := 0; i < snap.SegmentCount; i++ {
 		b.WriteString(fmt.Sprintf("#EXTINF:%d.000,\n", TargetSegmentDuration))
 		b.WriteString(fmt.Sprintf("/live/%s/segment/%d\n", id, i))
+	}
+	// Emit EXT-X-PART for the currently-building segment (index =
+	// SegmentCount because segments[] grows on flush, so parts
+	// accumulated so far belong to the NEXT segment). This is what
+	// makes LL-HLS viewers start within PartTargetDuration seconds
+	// of the creator going live.
+	currentSegIdx := uint32(snap.SegmentCount)
+	for _, p := range sink.PartsOf(currentSegIdx) {
+		b.WriteString(fmt.Sprintf(
+			"#EXT-X-PART:DURATION=%.3f,URI=\"/live/%s/segment/%d/part/%d\",INDEPENDENT=%s\n",
+			partDurationSecs(p.DurationT), id, currentSegIdx, p.Index,
+			yesNo(p.Independent),
+		))
 	}
 	// Append EXT-X-ENDLIST when the session has finalised so hls.js
 	// stops polling and treats the playlist as VOD. Finalised means
@@ -174,6 +195,52 @@ func (r *LiveRouter) serveManifest(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	_, _ = w.Write(body)
+}
+
+// servePart serves a single LL-HLS partial segment fragment. Path
+// shape: /live/{sessionID}/segment/{n}/part/{p}. Parts don't share
+// the parent segment's immutable caching — they may be re-emitted
+// under the same URI during the window before the parent closes.
+func (r *LiveRouter) servePart(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("sessionID")
+	segStr := req.PathValue("n")
+	partStr := req.PathValue("p")
+	segIdx, err := strconv.ParseUint(segStr, 10, 32)
+	if err != nil {
+		http.Error(w, "live: invalid segment index", http.StatusBadRequest)
+		return
+	}
+	partIdx, err := strconv.ParseUint(partStr, 10, 32)
+	if err != nil {
+		http.Error(w, "live: invalid part index", http.StatusBadRequest)
+		return
+	}
+	sink, ok := r.sink(id)
+	if !ok {
+		http.Error(w, "live: unknown session", http.StatusNotFound)
+		return
+	}
+	bytes, err := sink.PartBytes(uint32(segIdx), uint32(partIdx))
+	if err != nil {
+		http.Error(w, "live: part: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	w.Header().Set("Content-Length", strconv.Itoa(len(bytes)))
+	_, _ = w.Write(bytes)
+}
+
+// partDurationSecs converts VideoTimescale ticks to seconds.
+func partDurationSecs(ticks uint32) float64 {
+	return float64(ticks) / float64(VideoTimescale)
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "YES"
+	}
+	return "NO"
 }
 
 func (r *LiveRouter) serveSegment(w http.ResponseWriter, req *http.Request) {

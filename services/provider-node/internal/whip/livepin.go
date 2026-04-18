@@ -32,6 +32,21 @@ type LivePinSink struct {
 	finalized *manifest.Manifest
 	startedAt time.Time
 	endedAt   time.Time
+	// LL-HLS partial segments: parts[segIdx] is the ordered list of
+	// part fragments that make up segment segIdx. A part is persisted
+	// the moment the segmenter emits it (well before the full segment
+	// closes), so viewers polling playlist.m3u8 see new EXT-X-PART
+	// entries within ~PartTargetDuration of ingest rather than waiting
+	// for the 6s parent segment to close.
+	parts map[uint32][]PartRecord
+}
+
+// PartRecord is one LL-HLS partial segment persisted by a LivePinSink.
+type PartRecord struct {
+	Index       uint32
+	Bytes       []byte
+	DurationT   uint32
+	Independent bool
 }
 
 // NewLivePinSink binds a session ID to a ContentStore. The session ID
@@ -45,7 +60,64 @@ func NewLivePinSink(store *pinning.ContentStore, sessionID string) (*LivePinSink
 	if sessionID == "" {
 		return nil, errors.New("livepin: sessionID is empty")
 	}
-	return &LivePinSink{store: store, sessionID: sessionID, startedAt: time.Now().UTC()}, nil
+	return &LivePinSink{
+		store:     store,
+		sessionID: sessionID,
+		startedAt: time.Now().UTC(),
+		parts:     make(map[uint32][]PartRecord),
+	}, nil
+}
+
+// OnMediaPart satisfies the PartSink interface. Called by CMAFSegmenter
+// every PartTargetDuration of accumulated samples inside the current
+// parent segment. Parts are appended in order; tests use PartsOf
+// (below) to inspect or PartBytes for HTTP serving.
+func (l *LivePinSink) OnMediaPart(segIdx, partIdx uint32, b []byte, durationT uint32, independent bool) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.parts == nil {
+		l.parts = make(map[uint32][]PartRecord)
+	}
+	// Enforce monotonic partIdx within segIdx. Gaps indicate a bug in
+	// the segmenter; better to fail loud than silently accept.
+	existing := l.parts[segIdx]
+	if uint32(len(existing)) != partIdx {
+		return fmt.Errorf("livepin: part idx %d != expected %d for segment %d", partIdx, len(existing), segIdx)
+	}
+	l.parts[segIdx] = append(existing, PartRecord{
+		Index:       partIdx,
+		Bytes:       append([]byte(nil), b...),
+		DurationT:   durationT,
+		Independent: independent,
+	})
+	return nil
+}
+
+// PartsOf returns a defensive copy of the parts recorded for a given
+// segment. Used by the HLS playlist generator to emit EXT-X-PART
+// entries referencing the currently-building segment's parts.
+func (l *LivePinSink) PartsOf(segIdx uint32) []PartRecord {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	parts := l.parts[segIdx]
+	if len(parts) == 0 {
+		return nil
+	}
+	out := make([]PartRecord, len(parts))
+	copy(out, parts)
+	return out
+}
+
+// PartBytes retrieves a single part's raw fMP4 fragment for HTTP
+// serving. Returns an error when segIdx or partIdx are out of range.
+func (l *LivePinSink) PartBytes(segIdx, partIdx uint32) ([]byte, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	parts := l.parts[segIdx]
+	if int(partIdx) >= len(parts) {
+		return nil, fmt.Errorf("livepin: part %d/%d out of range (have %d)", segIdx, partIdx, len(parts))
+	}
+	return append([]byte(nil), parts[partIdx].Bytes...), nil
 }
 
 // OnInitSegment stores the fMP4 init segment. Called once per session.
