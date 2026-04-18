@@ -137,6 +137,44 @@ func (d *DHT) Provide(ctx context.Context, cidStr string) error {
 // caller passes 0 to FindProviders.
 const DefaultProviderLimit = 20
 
+// DefaultRefreshPeriod is how often RefreshLoop re-announces provider
+// records. kad-dht's default provider record expiry is 24h, so we refresh
+// every 6h to give 4 retries before a record would disappear.
+const DefaultRefreshPeriod = 6 * time.Hour
+
+// ProvideAll announces every CID in cids. Returns the first error if any;
+// subsequent CIDs are still attempted so a single bad entry doesn't block
+// the rest.
+func (d *DHT) ProvideAll(ctx context.Context, cids []string) error {
+	var firstErr error
+	for _, c := range cids {
+		if err := d.Provide(ctx, c); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// RefreshLoop provides cids immediately and then re-provides them every
+// period until ctx is cancelled. Intended to run as a goroutine from main.
+// Passing period <= 0 uses DefaultRefreshPeriod.
+func (d *DHT) RefreshLoop(ctx context.Context, cids []string, period time.Duration) {
+	if period <= 0 {
+		period = DefaultRefreshPeriod
+	}
+	_ = d.ProvideAll(ctx, cids)
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = d.ProvideAll(ctx, cids)
+		}
+	}
+}
+
 // FindProviders queries the DHT for providers of cidStr. Returns up to
 // `limit` PeerIDs ranked by Kademlia distance (the DHT's natural order).
 // Passing limit <= 0 uses DefaultProviderLimit.

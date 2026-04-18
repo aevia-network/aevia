@@ -1,9 +1,9 @@
 // Aevia Provider Node — serves pinned HLS content over both plain HTTP and
-// libp2p streams (via go-libp2p-http). Milestone 1 brings the libp2p host
-// online with a persistent identity, a dual-transport HTTP mux (libp2p
-// stream + plain TCP), fixture HLS segments, unified config, graceful
-// shutdown, and structured JSON logs. DHT, relay, and BadgerDB-backed
-// pinning land in subsequent milestones.
+// libp2p streams (via go-libp2p-http), and announces the CIDs it pins via
+// Kademlia DHT so any viewer can discover it by CID alone.
+//
+// Milestone 3 adds the DHT layer. Milestone 4 adds Circuit Relay v2 for
+// NAT traversal. BadgerDB-backed persistent pinning lands in Milestone 5.
 package main
 
 import (
@@ -20,6 +20,7 @@ import (
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/config"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/content"
+	aeviadht "github.com/Leeaandrob/aevia/services/provider-node/internal/dht"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
@@ -60,6 +61,25 @@ func run(args []string, logger zerolog.Logger) error {
 	srv := httpx.NewServer(n.Host())
 	content.Register(srv)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Boot the DHT. For a Provider Node we run in server mode so the node
+	// contributes to routing + answers queries on behalf of others.
+	d, err := aeviadht.New(ctx, n.Host(), aeviadht.ModeServer)
+	if err != nil {
+		return err
+	}
+
+	seeds, err := aeviadht.ParseBootstrapPeers(cfg.BootstrapPeers)
+	if err != nil {
+		return err
+	}
+	if err := d.Bootstrap(ctx, seeds); err != nil {
+		// Log but do not abort — a fresh node with no seeds is a valid seed itself.
+		logger.Warn().Err(err).Str("event", "dht_bootstrap_warn").Msg("dht bootstrap incomplete")
+	}
+
 	logger.Info().
 		Str("event", "node_boot").
 		Str("mode", string(cfg.Mode)).
@@ -67,6 +87,7 @@ func run(args []string, logger zerolog.Logger) error {
 		Str("data_dir", cfg.DataDir).
 		Str("listen", cfg.Listen).
 		Str("http_addr", cfg.HTTPAddr).
+		Int("bootstrap_seeds", len(seeds)).
 		Msg("provider-node started")
 
 	for _, addr := range n.Host().Addrs() {
@@ -75,9 +96,6 @@ func run(args []string, logger zerolog.Logger) error {
 			Str("addr", addr.String()+"/p2p/"+n.PeerID().String()).
 			Msg("listening on libp2p transport")
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	tcpListener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
@@ -110,6 +128,9 @@ func run(args []string, logger zerolog.Logger) error {
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		logger.Error().Err(err).Str("event", "shutdown_error").Msg("http shutdown")
+	}
+	if err := d.Close(); err != nil {
+		logger.Error().Err(err).Str("event", "dht_close_error").Msg("dht close")
 	}
 	if err := n.Close(context.Background()); err != nil {
 		return err
