@@ -11,6 +11,29 @@
       "registerTypehash": "0x8c8ee0c01f85e8e70588bfddbac469cf565f6c12435948d2b54b5b7fda771415",
       "domainName": "Aevia ContentRegistry",
       "domainVersion": "1"
+    },
+    "PersistencePool": {
+      "address": "0x735C363a6df4651ABD8b1081F0b73fdAd98a4a93",
+      "deployBlock": 40354805,
+      "deployTxHash": "0x08e295178f217f274055057ca8af6ec4c54847329168cef8d5d922e7f56a5125",
+      "deploymentTimestamp": "2026-04-18T02:05:25.272Z",
+      "deployer": "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca",
+      "gasUsed": 834331,
+      "constructor": {
+        "rewardToken": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "coordinator": "0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca"
+      },
+      "verified": {
+        "provider": "Sourcify",
+        "jobId": "4ff3fcd6-8025-47af-a664-e975a8c81615",
+        "status": "match"
+      },
+      "rewardTokenMetadata": {
+        "name": "USD Coin (Base Sepolia)",
+        "symbol": "USDC",
+        "decimals": 6,
+        "issuer": "Circle"
+      }
     }
   }
 }

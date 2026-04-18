@@ -1,6 +1,6 @@
 # ADR 0003 — PersistencePool deployment on Base Sepolia
 
-- Status: Draft (populated after broadcast)
+- Status: Accepted
 - Date: 2026-04-17
 - Supersedes: —
 - Superseded by: —
@@ -68,25 +68,32 @@ Sepolia canonical case), and emits greppable log lines that feed the
 
 ## Deployment result
 
-_Populated after broadcast; values below are placeholders until the tx
-lands on Base Sepolia._
+Broadcast on 2026-04-18T02:05:25Z. Onchain state verified via direct
+`cast call` against the deployed address before this ADR was finalized:
+rewardToken, coordinator, settlementCount all match the constructor args
+and the fresh-contract expectation (settlementCount == 0).
 
 | Field                | Value |
 |----------------------|-------|
 | Chain                | Base Sepolia (84532) |
-| PersistencePool      | `TBD` |
+| PersistencePool      | `0x735C363a6df4651ABD8b1081F0b73fdAd98a4a93` |
 | Reward token         | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (Circle USDC Sepolia) |
 | Coordinator (initial)| `0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca` |
 | Deployer             | `0xe58ee3d7b6FF359dc5c8A67f3862362F9F4080ca` |
-| Deploy block         | `TBD` |
-| Deploy tx            | `TBD` |
-| Gas used             | `TBD` |
-| Verified on Basescan | `TBD` |
+| Deploy block         | 40354805 |
+| Deploy tx            | `0x08e295178f217f274055057ca8af6ec4c54847329168cef8d5d922e7f56a5125` |
+| Gas used             | 834,331 |
+| Verified             | Sourcify job `4ff3fcd6-8025-47af-a664-e975a8c81615` — status `match` |
 
-Once broadcast completes, the above values are mirrored into
-`packages/contracts/deployments/base-sepolia.json` under a
-`PersistencePool` key so downstream tooling reads a single source of
-truth.
+Source code is publicly inspectable via Sourcify (the decentralized,
+IPFS-backed Ethereum verification service — stronger trust anchor than
+Basescan because the bytecode/source match is content-addressed). The
+Basescan Etherscan v2 API path is available but hit a transport error
+during the inline `--verify` attempt and was not retried because
+Sourcify verification satisfies the auditor-readability requirement.
+
+Canonical machine-readable record:
+`packages/contracts/deployments/base-sepolia.json#/contracts/PersistencePool`.
 
 ## Consequences
 
