@@ -2,6 +2,7 @@ import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
 import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import { localePath } from '@/i18n/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -16,7 +17,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  return getDictionary(locale).privacy.meta;
+  return pageMetadata(locale, '/privacy', getDictionary(locale).privacy.meta);
 }
 
 export default async function Privacy({ params }: { params: Promise<{ locale: string }> }) {

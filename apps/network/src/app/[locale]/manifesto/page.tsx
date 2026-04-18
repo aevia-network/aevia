@@ -2,6 +2,7 @@ import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
 import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import { MeshDot } from '@aevia/ui';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -15,8 +16,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const dict = getDictionary(locale);
-  return dict.manifesto.meta;
+  return pageMetadata(locale, '/manifesto', getDictionary(locale).manifesto.meta);
 }
 
 export default async function Manifesto({

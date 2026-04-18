@@ -2,13 +2,28 @@ import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
 import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import { localePath } from '@/i18n/navigation';
 import { MeshDot } from '@aevia/ui';
 import { ArrowRight } from 'lucide-react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-static';
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) return {};
+  return pageMetadata(locale, '/', {
+    title: 'aevia.network — sovereign video protocol',
+    description: getDictionary(locale).landing.hero.subtitle,
+  });
+}
 
 export default async function Landing({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;

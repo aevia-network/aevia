@@ -34,11 +34,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'aevia.network — sovereign video protocol',
+  title: {
+    default: 'aevia.network — sovereign video protocol',
+    template: '%s · aevia.network',
+  },
   description:
     'Protocol home for Aevia. Persistence does not imply distribution. Whitepaper, RFC specification, AUP, roadmap, manifesto.',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://aevia.network'),
   applicationName: 'aevia.network',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/favicon.svg',
+  },
 };
 
 export const viewport: Viewport = {
@@ -62,6 +69,8 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
+  const cfToken = process.env.NEXT_PUBLIC_CLOUDFLARE_ANALYTICS_TOKEN;
+
   return (
     <html
       lang={locale}
@@ -69,6 +78,13 @@ export default async function LocaleLayout({
     >
       <body className="min-h-screen bg-background font-body text-accent antialiased">
         {children}
+        {cfToken ? (
+          <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon={`{"token": "${cfToken}"}`}
+          />
+        ) : null}
       </body>
     </html>
   );

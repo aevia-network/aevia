@@ -2,6 +2,7 @@ import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
 import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import { localePath } from '@/i18n/navigation';
 import { ArrowRight } from 'lucide-react';
 import type { Metadata } from 'next';
@@ -17,7 +18,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  return getDictionary(locale).spec.meta;
+  return pageMetadata(locale, '/spec', getDictionary(locale).spec.meta);
 }
 
 type StatusKey = 'published' | 'draft' | 'planned';

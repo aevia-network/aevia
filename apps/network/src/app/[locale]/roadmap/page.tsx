@@ -2,6 +2,7 @@ import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
 import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
@@ -14,7 +15,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  return getDictionary(locale).roadmap.meta;
+  return pageMetadata(locale, '/roadmap', getDictionary(locale).roadmap.meta);
 }
 
 export default async function Roadmap({

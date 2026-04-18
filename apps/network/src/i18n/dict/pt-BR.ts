@@ -664,6 +664,78 @@ export const ptBR = {
       'takedowns dmca seguem 17 u.s.c. §512. o agente designado recebe notificações em contact@aevia.network. o procedimento respeita a janela de contra-notificação de 10–14 dias úteis.',
     referencesTitle: 'referências',
   },
+  transparency: {
+    meta: {
+      title: 'transparency · aevia.network',
+      description:
+        'relatório de transparência da aevia. métricas de takedown dmca, notice-and-action dsa, reportes ncmec, deliberações do conselho.',
+    },
+    eyebrow: 'política · transparência',
+    title: 'relatório de transparência',
+    subtitle:
+      'o que publicamos, quando, e por quê. a aevia opera sob art. 15 e 17 do digital services act e sob section 230 dos estados unidos. transparência recorrente é condição da nossa postura editorial pública.',
+    stamp: 'primeira janela elegível: 2027-02-17 (12 meses após o primeiro uso comercial elegível)',
+    leadParagraphs: [
+      'este é um commitment público, não um relatório em si. a aevia ainda não atingiu a primeira janela elegível para um relatório dsa art. 15. até lá, esta página documenta quais métricas serão publicadas, com qual cadência, e onde o registro histórico viverá.',
+      'a tese da aevia — persistência não implica distribuição — só é crível se as decisões de distribuição forem auditáveis. este relatório é o instrumento dessa auditabilidade: cada mudança de feed, subsidy ou ranking disparada por ação legal vira linha pública aqui.',
+    ],
+    commitmentsTitle: 'compromissos normativos',
+    commitments: [
+      {
+        tag: 'dsa art. 15',
+        text: '— relatório anual de moderação: pedidos de remoção recebidos, atendidos, contestados; tempo médio de resposta; taxa de erro automático; recursos humanos alocados; política de suspensão.',
+      },
+      {
+        tag: 'dsa art. 17',
+        text: '— justificativa individual por decisão de restrição de distribuição, quando o usuário contestar. fundamentação legal citada, alternativas consideradas, canal de apelação.',
+      },
+      {
+        tag: 'dmca §512',
+        text: '— contagem anual de notices recebidos, contra-notificações, strikes emitidos, contas terminadas por reincidência. publicado no formato padrão da u.s. copyright office.',
+      },
+      {
+        tag: 'ncmec cybertipline',
+        text: '— contagem anual de reportes. conteúdo não é jamais descrito — apenas a contagem e confirmação de escalonamento à ncmec conforme 18 u.s.c. §2258a.',
+      },
+      {
+        tag: 'conselho ecumênico',
+        text: '— texto das propostas de parâmetro, votos por conselheiro, vetos invocados, opiniões divergentes. ancorado no trust ledger em base l2 a cada deliberação.',
+      },
+      {
+        tag: 'risk score',
+        text: '— fórmula vigente, pesos atuais, thresholds de subsidy e feed, revisões feitas por júri. mudanças assinadas criptograficamente.',
+      },
+    ],
+    cadenceTitle: 'cadência e primeiros relatórios',
+    cadenceBody:
+      'relatórios dsa: anuais, publicados até 17 de fevereiro, cobrindo o ano civil anterior. relatórios dmca: anuais, publicados em janeiro. deliberações do conselho: publicadas em tempo quase real no trust ledger. strikes individuais: notificação direta ao usuário afetado, com justificativa textual no idioma do usuário.',
+    statusTitle: 'status atual (2026-04-17)',
+    statusBody:
+      'nenhum relatório publicado ainda — a plataforma não atingiu a primeira janela. contadores abaixo refletem a operação desde o bootstrap.',
+    metricsHeaders: {
+      metric: 'métrica',
+      count: 'contagem',
+      window: 'janela',
+    },
+    metrics: [
+      { metric: 'notices dmca recebidos', count: '0', window: 'desde 2026-04' },
+      { metric: 'contra-notificações dmca', count: '0', window: 'desde 2026-04' },
+      { metric: 'strikes emitidos', count: '0', window: 'desde 2026-04' },
+      { metric: 'contas terminadas por reincidência', count: '0', window: 'desde 2026-04' },
+      { metric: 'notices dsa recebidos (eea)', count: '0', window: 'desde 2026-04' },
+      { metric: 'reportes ncmec', count: '0', window: 'desde 2026-04' },
+      { metric: 'deliberações do conselho', count: '0', window: 'conselho ainda em bootstrap' },
+      { metric: 'revisões manuais de risk score', count: '0', window: 'desde 2026-04' },
+    ],
+    archiveTitle: 'arquivo histórico',
+    archiveBody:
+      'todos os relatórios publicados ficarão linkados aqui por ano. o primeiro relatório será publicado em 2027-02-17. relatórios anteriores estarão disponíveis em pdf assinado e em html canonicalizado.',
+    contactTitle: 'reclamações, correções e solicitações',
+    contactBody1:
+      'se você acredita que uma métrica neste relatório está incorreta, envie um email para',
+    contactBody2:
+      ' com assunto transparency correction. respondemos publicamente — a correção e a razão da correção aparecem no próximo relatório.',
+  },
   notFound: {
     label: '404 · página não encontrada',
     headline: 'ou você a perdeu, ou ela nunca existiu.',
@@ -684,7 +756,7 @@ export const ptBR = {
     author: 'Leandro Barbosa · Aevia LLC · versão 1 · abril de 2026',
     version: 'v1 · abril de 2026',
     contents: 'sumário',
-    downloadPdf: 'baixar pdf →',
+    downloadPdf: 'salvar como pdf →',
     legalNoteLabel: 'nota jurídica',
     legalNote:
       'Este documento descreve uma arquitetura de protocolo. Não é uma oferta de valores mobiliários. Os fluxos de cUSDC descritos em §5 e §12 representam compensação fee-for-service pela infraestrutura prestada ao protocolo; não são retornos sobre capital investido. Declarações prospectivas sobre releases, RFCs ou funcionalidades futuras podem mudar sem aviso. Nada neste documento constitui aconselhamento jurídico, financeiro ou de investimento.',

@@ -1,8 +1,10 @@
 import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
+import { PrintButton } from '@/components/print-button';
 import { isLocale } from '@/i18n/config';
 import { WhitepaperBodyByLocale } from '@/i18n/content';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import { MeshDot } from '@aevia/ui';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
@@ -16,7 +18,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  return getDictionary(locale).whitepaper.meta;
+  return pageMetadata(locale, '/whitepaper', getDictionary(locale).whitepaper.meta);
 }
 
 export default async function Whitepaper({
@@ -36,7 +38,7 @@ export default async function Whitepaper({
       <main className="bg-background text-accent">
         <div className="mx-auto w-full max-w-[1440px] px-8 pb-32">
           <div className="grid grid-cols-1 gap-16 lg:grid-cols-[280px_minmax(0,92ch)_1fr]">
-            <aside className="sticky top-[100px] hidden self-start lg:block">
+            <aside data-print-hide="true" className="sticky top-[100px] hidden self-start lg:block">
               <div className="pt-[200px]">
                 <span className="font-label text-xs tracking-[0.04em] text-tertiary">
                   {w.contents}
@@ -61,9 +63,7 @@ export default async function Whitepaper({
                 </nav>
                 <div className="mt-16 flex flex-col gap-2">
                   <span className="font-mono text-xs text-on-surface-variant">{w.version}</span>
-                  <a href="/whitepaper.pdf" className="font-label text-sm text-primary">
-                    {w.downloadPdf}
-                  </a>
+                  <PrintButton label={w.downloadPdf} />
                 </div>
               </div>
             </aside>

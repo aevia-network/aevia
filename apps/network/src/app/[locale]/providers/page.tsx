@@ -2,6 +2,7 @@ import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
 import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
+import { pageMetadata } from '@/i18n/metadata';
 import { localePath } from '@/i18n/navigation';
 import { MeshDot } from '@aevia/ui';
 import { ArrowRight, ArrowUpRight } from 'lucide-react';
@@ -18,7 +19,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  return getDictionary(locale).providers.meta;
+  return pageMetadata(locale, '/providers', getDictionary(locale).providers.meta);
 }
 
 export default async function Providers({
