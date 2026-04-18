@@ -133,10 +133,18 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
       }
       const apiLive = (await res.json()) as CreateLiveResponse;
 
+      // Custom headers (`X-Aevia-DID`, `X-Aevia-Signature`) are only meaningful
+      // to our provider-node — Cloudflare Stream's WHIP endpoint declares a
+      // tight `Access-Control-Allow-Headers` whitelist that does NOT include
+      // them, so the browser's CORS preflight fails before the POST even
+      // leaves ("Request header field x-aevia-did is not allowed by
+      // Access-Control-Allow-Headers in preflight response"). Send them only
+      // when we're publishing to the aevia-mesh.
+      const isAeviaMesh = apiLive.backend === 'aevia-mesh';
       const session = await publishWhip({
         whipUrl: apiLive.whipUrl,
         stream: streamRef.current,
-        did: apiLive.creatorDid,
+        did: isAeviaMesh ? apiLive.creatorDid : undefined,
         onConnectionStateChange: (s) => {
           if (s === 'connected') setStatus('live');
           if (s === 'failed' || s === 'disconnected' || s === 'closed') {
