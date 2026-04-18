@@ -68,27 +68,60 @@ func (s *Session) OnTrack(handler func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 type Server struct {
 	api *webrtc.API
 
-	mu       sync.Mutex
-	sessions map[string]*Session
-	// sessionID generates unique ephemeral IDs. Sessions are identified
-	// by this until their recorded Merkle root lands on-chain post-live.
-	sessionID func() string
+	mu            sync.Mutex
+	sessions      map[string]*Session
+	sessionID     func() string
+	onSessionCbs  []func(*Session)
+	authorisedDIDs map[string]struct{}
+}
+
+// Options configure a Server. Zero value is fine for tests; production
+// sets AuthorisedDIDs to the creator allowlist.
+type Options struct {
+	// AuthorisedDIDs controls who can POST /whip. Empty slice means
+	// authentication is DISABLED — useful for local dev + CI, unsafe
+	// for public deploys. Production MUST supply this.
+	AuthorisedDIDs []string
 }
 
 // NewServer builds a whip.Server with a pion/webrtc API configured for
 // H.264 + Opus. Other codecs are rejected to keep the M8 scope tight —
 // VP9/AV1 land when transcoding gets added.
-func NewServer() (*Server, error) {
+func NewServer(opts Options) (*Server, error) {
 	mediaEngine := &webrtc.MediaEngine{}
 	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
 		return nil, fmt.Errorf("whip: register codecs: %w", err)
 	}
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine))
+	dids := make(map[string]struct{}, len(opts.AuthorisedDIDs))
+	for _, did := range opts.AuthorisedDIDs {
+		if did != "" {
+			dids[did] = struct{}{}
+		}
+	}
 	return &Server{
-		api:       api,
-		sessions:  make(map[string]*Session),
-		sessionID: newSessionID,
+		api:            api,
+		sessions:       make(map[string]*Session),
+		sessionID:      newSessionID,
+		authorisedDIDs: dids,
 	}, nil
+}
+
+// OnSession registers a callback invoked whenever a new WHIP session is
+// established. Handlers register Track + Connection state callbacks on
+// the Session to attach their pipeline (segmenter, metrics, etc.).
+//
+// Callbacks fire synchronously before the SDP answer is returned, so
+// the caller has full control over the media pipeline before the
+// creator's first RTP packet arrives. Multiple callbacks can be
+// registered; all fire on each session.
+func (s *Server) OnSession(cb func(*Session)) {
+	if cb == nil {
+		return
+	}
+	s.mu.Lock()
+	s.onSessionCbs = append(s.onSessionCbs, cb)
+	s.mu.Unlock()
 }
 
 // HandlerRegistrar matches the signature shared by httpx.Server and
@@ -109,6 +142,14 @@ func (s *Server) Register(r HandlerRegistrar) {
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); ct != "application/sdp" {
 		http.Error(w, "whip: Content-Type must be application/sdp", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	// Authorization check — allowlist-only for M8 MVP. Production upgrade
+	// path: X-Aevia-Signature header carrying an EIP-191 / EIP-712
+	// signature of the SDP offer, which we'd recover to a DID and compare.
+	if !s.checkAuth(r.Header.Get("X-Aevia-DID")) {
+		http.Error(w, "whip: DID not authorised", http.StatusUnauthorized)
 		return
 	}
 	offerBytes, err := io.ReadAll(r.Body)
@@ -194,7 +235,16 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	s.sessions[session.ID] = session
+	callbacks := make([]func(*Session), len(s.onSessionCbs))
+	copy(callbacks, s.onSessionCbs)
 	s.mu.Unlock()
+
+	// Fan out new-session notification to registered pipelines BEFORE
+	// media starts flowing, so track handlers are in place for the first
+	// RTP packet.
+	for _, cb := range callbacks {
+		cb(session)
+	}
 
 	answerSDP := pc.LocalDescription().SDP
 	w.Header().Set("Content-Type", "application/sdp")
@@ -235,4 +285,16 @@ var ErrSessionNotFound = errors.New("whip: session not found")
 // long enough to avoid collision.
 func newSessionID() string {
 	return fmt.Sprintf("s_%d", time.Now().UnixNano())
+}
+
+// checkAuth validates the creator's DID against the authorised allowlist.
+// An empty allowlist means auth is off (dev/test mode).
+func (s *Server) checkAuth(did string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.authorisedDIDs) == 0 {
+		return true
+	}
+	_, ok := s.authorisedDIDs[did]
+	return ok
 }

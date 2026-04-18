@@ -16,7 +16,7 @@ import (
 )
 
 func TestNewServerSmoke(t *testing.T) {
-	s, err := whip.NewServer()
+	s, err := whip.NewServer(whip.Options{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestNewServerSmoke(t *testing.T) {
 }
 
 func TestHandleIngestRejectsWrongContentType(t *testing.T) {
-	s, _ := whip.NewServer()
+	s, _ := whip.NewServer(whip.Options{})
 	mux := http.NewServeMux()
 	s.Register(mux)
 
@@ -41,7 +41,7 @@ func TestHandleIngestRejectsWrongContentType(t *testing.T) {
 }
 
 func TestHandleIngestRejectsEmptyBody(t *testing.T) {
-	s, _ := whip.NewServer()
+	s, _ := whip.NewServer(whip.Options{})
 	mux := http.NewServeMux()
 	s.Register(mux)
 
@@ -60,7 +60,7 @@ func TestHandleIngestRejectsEmptyBody(t *testing.T) {
 // as the creator generates a valid SDP offer, POSTs it at the server,
 // and the server replies with an answer our client accepts.
 func TestWHIPFullHandshakeWithPionClient(t *testing.T) {
-	server, err := whip.NewServer()
+	server, err := whip.NewServer(whip.Options{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
