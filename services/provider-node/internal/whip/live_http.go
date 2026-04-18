@@ -1,0 +1,160 @@
+package whip
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+// LiveRouter attaches live-session-scoped HTTP routes to the content
+// surface:
+//
+//   GET /live/{sessionID}/playlist.m3u8   — HLS media playlist (live)
+//   GET /live/{sessionID}/init.mp4         — fMP4 init segment
+//   GET /live/{sessionID}/segment/{n}.mp4  — fMP4 media segment
+//
+// M8 ships classic HLS (not LL-HLS EXT-X-PART) — hls.js plays it with
+// ~10s latency. LL-HLS partial segments land in M8.5 for sub-3s.
+type LiveRouter struct {
+	mu   sync.Mutex
+	pins map[string]*LivePinSink // sessionID -> sink
+}
+
+// NewLiveRouter returns an empty router. Sessions register via
+// AttachSession as they start; the WHIP OnSession callback is the
+// natural call site.
+func NewLiveRouter() *LiveRouter {
+	return &LiveRouter{pins: make(map[string]*LivePinSink)}
+}
+
+// AttachSession registers a live session so its playlist + segments
+// become HTTP-reachable.
+func (r *LiveRouter) AttachSession(sessionID string, sink *LivePinSink) error {
+	if sessionID == "" {
+		return errors.New("live: empty sessionID")
+	}
+	if sink == nil {
+		return errors.New("live: nil sink")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.pins[sessionID]; exists {
+		return fmt.Errorf("live: session %q already attached", sessionID)
+	}
+	r.pins[sessionID] = sink
+	return nil
+}
+
+// DetachSession removes the session from the router. Idempotent.
+func (r *LiveRouter) DetachSession(sessionID string) {
+	r.mu.Lock()
+	delete(r.pins, sessionID)
+	r.mu.Unlock()
+}
+
+// ActiveSessionIDs is exposed for metrics endpoints + tests.
+func (r *LiveRouter) ActiveSessionIDs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.pins))
+	for id := range r.pins {
+		out = append(out, id)
+	}
+	return out
+}
+
+// Register wires the live HTTP routes into the supplied registrar.
+func (r *LiveRouter) Register(reg HandlerRegistrar) {
+	reg.HandleFunc("GET /live/{sessionID}/playlist.m3u8", r.servePlaylist)
+	reg.HandleFunc("GET /live/{sessionID}/init.mp4", r.serveInit)
+	reg.HandleFunc("GET /live/{sessionID}/segment/{n}", r.serveSegment)
+}
+
+func (r *LiveRouter) sink(id string) (*LivePinSink, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.pins[id]
+	return s, ok
+}
+
+// servePlaylist generates a classic HLS media playlist from the sink's
+// current snapshot. Presence of EXT-X-ENDLIST is CONDITIONAL on the
+// session being finalised — absence means "live, keep polling".
+func (r *LiveRouter) servePlaylist(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("sessionID")
+	sink, ok := r.sink(id)
+	if !ok {
+		http.Error(w, "live: unknown session", http.StatusNotFound)
+		return
+	}
+	snap, err := sink.Snapshot()
+	if err != nil {
+		http.Error(w, "live: snapshot: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var b strings.Builder
+	b.WriteString("#EXTM3U\n")
+	b.WriteString("#EXT-X-VERSION:7\n")
+	b.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", TargetSegmentDuration))
+	b.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
+	b.WriteString(fmt.Sprintf("#EXT-X-MAP:URI=\"/live/%s/init.mp4\"\n", id))
+
+	for i := 0; i < snap.SegmentCount; i++ {
+		b.WriteString(fmt.Sprintf("#EXTINF:%d.000,\n", TargetSegmentDuration))
+		b.WriteString(fmt.Sprintf("/live/%s/segment/%d\n", id, i))
+	}
+	// M8 omits #EXT-X-ENDLIST while session is open — hls.js keeps
+	// polling for new segments. Post-finalize M9 hook will append it.
+
+	body := b.String()
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	_, _ = w.Write([]byte(body))
+}
+
+func (r *LiveRouter) serveInit(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("sessionID")
+	sink, ok := r.sink(id)
+	if !ok {
+		http.Error(w, "live: unknown session", http.StatusNotFound)
+		return
+	}
+	init, err := sink.InitBytes()
+	if err != nil {
+		http.Error(w, "live: init not ready", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Content-Length", strconv.Itoa(len(init)))
+	_, _ = w.Write(init)
+}
+
+func (r *LiveRouter) serveSegment(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("sessionID")
+	nStr := req.PathValue("n")
+	idx, err := strconv.ParseUint(nStr, 10, 32)
+	if err != nil {
+		http.Error(w, "live: invalid segment index", http.StatusBadRequest)
+		return
+	}
+	sink, ok := r.sink(id)
+	if !ok {
+		http.Error(w, "live: unknown session", http.StatusNotFound)
+		return
+	}
+	bytes, err := sink.SegmentBytes(uint32(idx))
+	if err != nil {
+		http.Error(w, "live: segment: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Content-Length", strconv.Itoa(len(bytes)))
+	_, _ = w.Write(bytes)
+}
