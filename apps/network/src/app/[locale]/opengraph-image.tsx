@@ -2,6 +2,7 @@ import { isLocale } from '@/i18n/config';
 import { getDictionary } from '@/i18n/get-dictionary';
 import { ImageResponse } from 'next/og';
 
+export const runtime = 'edge';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 export const alt = 'aevia.network — sovereign video protocol';

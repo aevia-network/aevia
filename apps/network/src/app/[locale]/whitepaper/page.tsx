@@ -9,6 +9,7 @@ import { MeshDot } from '@aevia/ui';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+export const runtime = 'edge';
 export const dynamic = 'force-static';
 
 export async function generateMetadata({

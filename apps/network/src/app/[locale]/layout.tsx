@@ -1,4 +1,4 @@
-import { type Locale, isLocale, locales } from '@/i18n/config';
+import { isLocale } from '@/i18n/config';
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Inter, Sora } from 'next/font/google';
 import { notFound } from 'next/navigation';
@@ -55,9 +55,7 @@ export const viewport: Viewport = {
   colorScheme: 'dark',
 };
 
-export function generateStaticParams(): { locale: Locale }[] {
-  return locales.map((locale) => ({ locale }));
-}
+export const runtime = 'edge';
 
 export default async function LocaleLayout({
   children,

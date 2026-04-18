@@ -1,6 +1,6 @@
 import { Footer } from '@/components/footer';
 import { Nav } from '@/components/nav';
-import { type Locale, isLocale, locales } from '@/i18n/config';
+import { isLocale } from '@/i18n/config';
 import { type RFCSlug, getRFCContent } from '@/i18n/content/rfcs';
 import { getDictionary } from '@/i18n/get-dictionary';
 import { pageMetadata } from '@/i18n/metadata';
@@ -8,20 +8,10 @@ import { localePath } from '@/i18n/navigation';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+export const runtime = 'edge';
 export const dynamic = 'force-static';
-export const dynamicParams = false;
 
 const SLUGS = ['rfc-0', 'rfc-1', 'rfc-2', 'rfc-3', 'rfc-4', 'rfc-5'] as const;
-
-export function generateStaticParams(): { locale: Locale; slug: RFCSlug }[] {
-  const combos: { locale: Locale; slug: RFCSlug }[] = [];
-  for (const locale of locales) {
-    for (const slug of SLUGS) {
-      combos.push({ locale, slug });
-    }
-  }
-  return combos;
-}
 
 const EYEBROWS: Record<RFCSlug, string> = {
   'rfc-0': 'rfc-0 · overview',

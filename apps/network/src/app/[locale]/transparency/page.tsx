@@ -6,6 +6,7 @@ import { pageMetadata } from '@/i18n/metadata';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+export const runtime = 'edge';
 export const dynamic = 'force-static';
 
 export async function generateMetadata({
