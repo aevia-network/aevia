@@ -74,3 +74,7 @@ deploy/e2e/logs/
 
 # Playwright MCP ephemeral traces
 .playwright-mcp/
+
+# Internal planning — lives in aevia-network/planning (private repo)
+TODO.md
+LANDING_NETWORK.md
