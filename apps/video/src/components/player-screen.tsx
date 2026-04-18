@@ -96,8 +96,17 @@ export function PlayerScreen(props: PlayerScreenProps) {
     setLiveStatus('connecting');
     setLiveError(null);
     try {
+      // Fase 2.1b consumption-latency instrumentation: enable with ?debug=1.
+      // When set, playWhep logs a timing breakdown to the browser console at
+      // two milestones — PC connected, and first decoded frame — so operators
+      // and devs can see the viewer-perceived latency without touching code.
+      const debugLog =
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('debug') === '1';
+
       const session = await playWhep({
         whepUrl: effectiveWhepUrl,
+        debugLog,
         onConnectionStateChange: (s) => {
           if (s === 'connected') setLiveStatus('playing');
           if (s === 'failed' || s === 'closed') {
