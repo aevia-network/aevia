@@ -17,6 +17,7 @@ import {
   Share2,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -109,6 +110,67 @@ export function PlayerScreen(props: PlayerScreenProps) {
       whepSessionRef.current = null;
     };
   }, [mode, startLive]);
+
+  // ---- Auto-handoff live → VOD when broadcaster ends transmission ---------
+  // The WHEP `disconnected` callback already flips `liveStatus` to `'ended'`
+  // (line ~85). Two follow-ups need to happen automatically without a tap:
+  //
+  // 1. If the server already has the recording's HLS URL (broadcaster's tab
+  //    finished the tus upload before the viewer noticed), swap mode after a
+  //    short beat so the viewer perceives "encerrou → assistir replay" as a
+  //    natural transition rather than a flash.
+  //
+  // 2. If the recording is still uploading/processing, poll the page via
+  //    Router.refresh() every 5 s up to 2 minutes. The server component
+  //    re-fetches `getVideo()` (already live in `live/[id]/page.tsx`) and
+  //    once `hlsUrl` arrives as a fresh prop the auto-switch from (1) fires.
+  //    Polling also covers the "user opens the page mid-processing" path
+  //    (`mode === 'vod' && vodProcessing`).
+  const router = useRouter();
+  const pollTickRef = useRef(0);
+  const [pollRemaining, setPollRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Auto-switch when the server has already linked the recording.
+    if (liveStatus !== 'ended') return;
+    if (!props.hlsUrl) return;
+    if (mode !== 'live') return;
+    const t = setTimeout(() => {
+      void whepSessionRef.current?.stop();
+      whepSessionRef.current = null;
+      setMode('vod');
+    }, 800);
+    return () => clearTimeout(t);
+  }, [liveStatus, props.hlsUrl, mode]);
+
+  useEffect(() => {
+    // Poll for VOD readiness — fires only while we're waiting on Cloudflare.
+    const waitingPostLive = liveStatus === 'ended' && !props.hlsUrl;
+    const openedDuringProcessing =
+      mode === 'vod' && (props.vodProcessing ?? false) && !props.hlsUrl;
+    if (!waitingPostLive && !openedDuringProcessing) {
+      pollTickRef.current = 0;
+      setPollRemaining(null);
+      return;
+    }
+
+    const MAX_TICKS = 24; // 24 × 5 s = 2 min total
+    const INTERVAL_MS = 5_000;
+    setPollRemaining(MAX_TICKS - pollTickRef.current);
+
+    const id = setInterval(() => {
+      pollTickRef.current += 1;
+      if (pollTickRef.current >= MAX_TICKS) {
+        clearInterval(id);
+        setPollRemaining(0);
+        return;
+      }
+      setPollRemaining(MAX_TICKS - pollTickRef.current);
+      router.refresh();
+    }, INTERVAL_MS);
+
+    return () => clearInterval(id);
+  }, [liveStatus, mode, props.hlsUrl, props.vodProcessing, router]);
 
   useEffect(() => {
     if (mode !== 'vod' || !props.hlsUrl) return;
@@ -219,6 +281,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
             vodError={vodError}
             hlsUrl={props.hlsUrl}
             vodProcessing={props.vodProcessing ?? false}
+            pollRemaining={pollRemaining}
             onRetryLive={startLive}
             onSwitchToReplay={switchToReplay}
             isLivePlaying={isLivePlaying}
@@ -440,6 +503,7 @@ function PlaybackStatusRow({
   vodError,
   hlsUrl,
   vodProcessing,
+  pollRemaining,
   onRetryLive,
   onSwitchToReplay,
   isLivePlaying,
@@ -451,6 +515,8 @@ function PlaybackStatusRow({
   vodError: string | null;
   hlsUrl: string | null;
   vodProcessing: boolean;
+  /** Ticks remaining in the auto-poll loop (5 s each). Null when not polling. */
+  pollRemaining: number | null;
   onRetryLive: () => void;
   onSwitchToReplay: () => void;
   isLivePlaying: boolean;
@@ -458,18 +524,42 @@ function PlaybackStatusRow({
 }) {
   if (isLivePlaying || isVodPlaying) return null;
 
+  // Live ended + HLS already available — auto-switch effect runs in 800 ms.
+  // Render the manual button as a graceful fallback in case the timer is
+  // pre-empted by an unmount/remount race or the user wants to skip the wait.
   if (mode === 'live' && liveStatus === 'ended' && hlsUrl) {
     return (
       <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container p-4 font-body text-on-surface/80 text-sm lowercase">
-        transmissão encerrada.
+        <span className="size-1.5 animate-pulse rounded-full bg-primary-dim" />
+        transmissão encerrada · abrindo replay…
         <button
           type="button"
           onClick={onSwitchToReplay}
           className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-label text-on-primary text-xs lowercase"
         >
           <Rewind className="size-3.5" aria-hidden />
-          assistir replay
+          agora
         </button>
+      </div>
+    );
+  }
+
+  // Live ended but VOD not yet linked. Auto-poll is running; render countdown.
+  if (mode === 'live' && liveStatus === 'ended' && !hlsUrl) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container p-4 font-body text-on-surface/70 text-sm lowercase">
+        <span className="size-1.5 animate-pulse rounded-full bg-secondary" />
+        transmissão encerrada · processando replay
+        {pollRemaining !== null && pollRemaining > 0 && (
+          <span className="font-mono text-[10px] text-on-surface/40">
+            próxima checagem em ≤ 5 s · {pollRemaining} restantes
+          </span>
+        )}
+        {pollRemaining === 0 && (
+          <span className="font-mono text-[10px] text-on-surface/40">
+            replay ainda não disponível — recarregue em alguns minutos
+          </span>
+        )}
       </div>
     );
   }
@@ -497,10 +587,22 @@ function PlaybackStatusRow({
     );
   }
 
+  // Opened the page mid-processing — same auto-poll, different copy.
   if (mode === 'vod' && !hlsUrl && vodProcessing) {
     return (
-      <div className="rounded-md bg-surface-container p-4 font-body text-on-surface/70 text-sm lowercase">
-        gravação ainda sendo processada pelo cloudflare. tente novamente em alguns minutos.
+      <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface-container p-4 font-body text-on-surface/70 text-sm lowercase">
+        <span className="size-1.5 animate-pulse rounded-full bg-secondary" />
+        gravação sendo processada pelo cloudflare
+        {pollRemaining !== null && pollRemaining > 0 && (
+          <span className="font-mono text-[10px] text-on-surface/40">
+            próxima checagem em ≤ 5 s · {pollRemaining} restantes
+          </span>
+        )}
+        {pollRemaining === 0 && (
+          <span className="font-mono text-[10px] text-on-surface/40">
+            ainda processando — recarregue em alguns minutos
+          </span>
+        )}
       </div>
     );
   }
