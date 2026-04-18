@@ -253,22 +253,44 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		mirrorLog.Info().Strs("peers", ids).Str("event", "mirror_client_ready").Msgf("origin will fan out to %d mirror(s)", len(mirrorPeers))
 	}
 
-	// Fase 2.2b — hook mirror ranker into /mirrors/candidates. The
-	// adapter wraps the mirror.Client's live peerMetrics map and the
-	// stateless Ranker. For now the static pool equals the configured
-	// mirror peers (post-parse) enriched at request time with RTT from
-	// peerMetrics. Dynamic DHT discovery lands in Fase 2.2c.
+	// Fase 2.2b + 2.2c — hook mirror ranker into /mirrors/candidates
+	// AND a dynamic selector into OnSession. Two paths:
+	//
+	//   AEVIA_MIRROR_PEERS non-empty (static mode):
+	//     — StartMirroring uses the exact CSV, ranker is merely
+	//       informational via /mirrors/candidates.
+	//   AEVIA_MIRROR_PEERS empty (dynamic mode):
+	//     — PoolFetcher queries /healthz of libp2p-connected peers,
+	//       ranker picks top-K per session, StartMirroringWithPeers
+	//       opens streams to those peers.
 	ranker := mirror.NewRanker(mirror.DefaultWeights(), cfg.Region, cfg.GeoLat, cfg.GeoLng, cfg.GeoSet)
 	staticPool := make([]mirror.Candidate, 0, len(mirrorPeers))
 	for _, p := range mirrorPeers {
 		staticPool = append(staticPool, mirror.Candidate{PeerID: p.String()})
 	}
+	// PoolFetcher enriches static pool with libp2p-live peers, queries
+	// each peer's /healthz to populate region + geo + active_sessions.
+	// TTL cache 60s keeps probe volume bounded.
+	poolFetcher := mirror.NewPoolFetcher(mirror.PoolFetcherConfig{
+		Host:       n.Host(),
+		StaticSeed: mirrorPeers,
+	})
 	rankerAdapter := mirror.NewRankerAdapter(mirror.RankerAdapterConfig{
-		Client:     mirrorClient,
-		Ranker:     ranker,
-		StaticPool: staticPool,
+		Client:      mirrorClient,
+		Ranker:      ranker,
+		StaticPool:  staticPool,
+		PoolFetcher: poolFetcher.AsPoolFunc(),
 	})
 	httpxOpts = append(httpxOpts, httpx.WithMirrorRanker(rankerAdapter))
+
+	// dynamicMode drives the OnSession branch below — picked once at
+	// boot so the behaviour per WHIP session is stable.
+	dynamicMode := len(mirrorPeers) == 0
+	if dynamicMode {
+		mirrorLog.Info().
+			Str("event", "mirror_mode_dynamic").
+			Msg("AEVIA_MIRROR_PEERS empty — top-K picked per session from libp2p peers")
+	}
 
 	// Now that all httpx options are accumulated, build the server.
 	srv := httpx.NewServer(n.Host(), httpxOpts...)
@@ -311,23 +333,46 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 				}
 			}()
 		})
-		// Start replicating this session to all configured mirror peers.
-		// Codec capabilities match the whip.Server MediaEngine config
-		// (H.264 Constrained Baseline + Opus) — see whip.NewServer.
-		// StartMirroring is a no-op when len(mirrorPeers) == 0.
-		if started := mirrorClient.StartMirroring(ctx, sess,
-			webrtc.RTPCodecCapability{
-				MimeType:    webrtc.MimeTypeH264,
-				ClockRate:   90_000,
-				SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
-			},
-			webrtc.RTPCodecCapability{
-				MimeType:  webrtc.MimeTypeOpus,
-				ClockRate: 48_000,
-				Channels:  2,
-			},
-		); started > 0 {
-			mirrorLog.Info().Int("mirrors", started).Str("session_id", sess.ID).Str("event", "mirror_fanout_started").Msg("origin replicating session to mirrors")
+		// Start replicating this session to mirror peers. Codec caps
+		// match whip.Server MediaEngine (H.264 Constrained Baseline + Opus).
+		videoCap := webrtc.RTPCodecCapability{
+			MimeType:    webrtc.MimeTypeH264,
+			ClockRate:   90_000,
+			SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+		}
+		audioCap := webrtc.RTPCodecCapability{
+			MimeType:  webrtc.MimeTypeOpus,
+			ClockRate: 48_000,
+			Channels:  2,
+		}
+		var mirrorsStarted int
+		var mirrorMode string
+		if dynamicMode {
+			// Fase 2.2c — pick top-K peers per session via ranker.
+			// Default K=3 (spec §5.3). Viewer hint stays empty for now
+			// (creator-side hint is Fase 2.2d scope); ranker falls back
+			// to origin region.
+			topK := rankerAdapter.SelectTopK(ctx, mirror.ViewerHint{}, 3)
+			mirrorMode = "dynamic"
+			mirrorsStarted = mirrorClient.StartMirroringWithPeers(ctx, sess, topK, videoCap, audioCap)
+			mirrorLog.Info().
+				Int("candidates", len(topK)).
+				Int("mirrors", mirrorsStarted).
+				Str("session_id", sess.ID).
+				Str("event", "mirror_fanout_started").
+				Str("mode", mirrorMode).
+				Msg("origin replicating via dynamic top-K selection")
+		} else {
+			mirrorsStarted = mirrorClient.StartMirroring(ctx, sess, videoCap, audioCap)
+			mirrorMode = "static"
+			if mirrorsStarted > 0 {
+				mirrorLog.Info().
+					Int("mirrors", mirrorsStarted).
+					Str("session_id", sess.ID).
+					Str("event", "mirror_fanout_started").
+					Str("mode", mirrorMode).
+					Msg("origin replicating via static CSV")
+			}
 		}
 		// Announce this live session in the DHT so viewers querying any
 		// Aevia node via /dht/resolve can discover which provider holds

@@ -108,6 +108,14 @@ func (c *Client) PeerMetricsSnapshot() map[peer.ID]*HopMetrics {
 	return out
 }
 
+// DynamicSelector is the narrow interface a Fase 2.2c caller uses to
+// pick top-K mirror peers at WHIP session start. The default
+// implementation (see RankerAdapter.SelectTopK) wraps a
+// RankerAdapter; tests can substitute a stub.
+type DynamicSelector interface {
+	SelectTopK(ctx context.Context, hint ViewerHint, k int) []peer.ID
+}
+
 // MirrorPeers returns a snapshot of configured downstream peers.
 // Empty when the operator did not enable mirroring. Exposed for
 // logging + diagnostics in /live/{id}/stats.
@@ -119,25 +127,24 @@ func (c *Client) MirrorPeers() []peer.ID {
 
 // StartMirroring opens one stream per configured mirror peer, sends
 // the header, and attaches RTPSink-backed fan-outs to sess so every
-// subsequent RTP packet is forwarded.
+// subsequent RTP packet is forwarded. Uses the Client's default static
+// peer list — kept for back-compat with Fase 2.1 call sites.
 //
-// Call-order invariant: MUST be called after the session has its hubs
-// populated (i.e. inside OnSession AFTER EnsureHubFor / TeeReadTrack
-// have set them up) so we can read the codec capabilities from the
-// hub tracks. A simpler alternative — passing explicit codec caps —
-// is on purpose not the default because the origin's pion session
-// knows the actual negotiated codec, whereas an operator-supplied
-// override could drift.
-//
-// Returns the number of streams successfully opened. Non-fatal errors
-// are logged; callers don't need to handle the return value unless
-// they want to abort the session when no mirror attached.
+// For Fase 2.2c dynamic selection use StartMirroringWithPeers.
 func (c *Client) StartMirroring(ctx context.Context, sess *whip.Session, videoCodec, audioCodec webrtc.RTPCodecCapability) int {
-	if len(c.peers) == 0 {
+	return c.StartMirroringWithPeers(ctx, sess, c.peers, videoCodec, audioCodec)
+}
+
+// StartMirroringWithPeers is StartMirroring that takes an explicit peer
+// list instead of the Client's configured static set. Main.go uses
+// this to plug a ranker-selected top-K list at session start (Fase 2.2c)
+// while preserving the static path when AEVIA_MIRROR_PEERS is set.
+func (c *Client) StartMirroringWithPeers(ctx context.Context, sess *whip.Session, peers []peer.ID, videoCodec, audioCodec webrtc.RTPCodecCapability) int {
+	if len(peers) == 0 {
 		return 0
 	}
 	started := 0
-	for _, p := range c.peers {
+	for _, p := range peers {
 		if p == c.host.ID() {
 			c.log.Debug("skip self as mirror peer", "peer_id", p.String())
 			continue

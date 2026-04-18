@@ -1,7 +1,10 @@
 package mirror
 
 import (
+	"context"
 	"time"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 )
@@ -147,4 +150,36 @@ func candidateFromHTTPX(c httpx.MirrorCandidate) Candidate {
 
 func timeDurationFromMs(ms float64) time.Duration {
 	return time.Duration(ms * float64(time.Millisecond))
+}
+
+// SelectTopK implements DynamicSelector — returns the top-K peer IDs
+// ranked by the same score formula /mirrors/candidates exposes.
+// Called by main.go's OnSession when AEVIA_MIRROR_PEERS is empty, so
+// the origin picks mirrors based on live RTT + region + load instead
+// of an operator-hardcoded CSV.
+//
+// Returns nil when the pool is empty (no libp2p peers, no static seed,
+// PoolFetcher returned nothing). Caller should fall back to static
+// peers or accept single-origin mode.
+func (a *RankerAdapter) SelectTopK(_ context.Context, hint ViewerHint, k int) []peer.ID {
+	if k <= 0 {
+		k = 3
+	}
+	httpxCands := a.CandidateSnapshot()
+	if len(httpxCands) == 0 {
+		return nil
+	}
+	scored := a.Score(httpxCands, hint.Region)
+	if len(scored) > k {
+		scored = scored[:k]
+	}
+	out := make([]peer.ID, 0, len(scored))
+	for _, sc := range scored {
+		pid, err := peer.Decode(sc.PeerID)
+		if err != nil {
+			continue
+		}
+		out = append(out, pid)
+	}
+	return out
 }
