@@ -45,6 +45,12 @@ type Config struct {
 	// setting this is required so pion's ICE candidates point at the
 	// reachable address instead of the private one.
 	PublicIPs string
+	// RequireSignatures forces every POST /whip to carry a valid
+	// X-Aevia-Signature header (EIP-191 sign of the raw SDP offer bytes).
+	// The server recovers the signer address and matches it against the
+	// address encoded in X-Aevia-DID. Default false for dev/testnet —
+	// production provider-nodes MUST enable this.
+	RequireSignatures bool
 	// TLSDomain is the public hostname the node serves HTTPS under.
 	// Empty disables TLS (HTTP-only). Example: "provider-sp.aevia.network".
 	TLSDomain string
@@ -99,6 +105,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.ForceReachability, "force-reachability", cfg.ForceReachability, "override AutoNAT reachability: \"public\", \"private\", or empty")
 	fs.StringVar(&cfg.AllowedDIDs, "allowed-dids", cfg.AllowedDIDs, "comma-separated WHIP creator DID allowlist (empty disables auth)")
 	fs.StringVar(&cfg.PublicIPs, "public-ips", cfg.PublicIPs, "comma-separated public IPs this node is reachable at (needed for NAT 1:1 ICE)")
+	fs.BoolVar(&cfg.RequireSignatures, "require-signatures", cfg.RequireSignatures, "require EIP-191 X-Aevia-Signature on every POST /whip")
 	fs.StringVar(&cfg.TLSDomain, "tls-domain", cfg.TLSDomain, "public hostname for auto-HTTPS via Let's Encrypt DNS-01 (empty disables TLS)")
 	fs.StringVar(&cfg.TLSEmail, "tls-email", cfg.TLSEmail, "contact email registered with Let's Encrypt")
 	fs.StringVar(&cfg.TLSCloudflareAPIToken, "tls-cloudflare-api-token", cfg.TLSCloudflareAPIToken, "Cloudflare API token (Zone:DNS:Edit) for DNS-01 challenges")
@@ -155,6 +162,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_PUBLIC_IPS"); v != "" {
 		cfg.PublicIPs = v
+	}
+	if v := os.Getenv("AEVIA_REQUIRE_SIGNATURES"); v == "1" || v == "true" {
+		cfg.RequireSignatures = true
 	}
 	if v := os.Getenv("AEVIA_TLS_DOMAIN"); v != "" {
 		cfg.TLSDomain = v

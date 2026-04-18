@@ -163,8 +163,9 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	// each finalised segment via the pinning.ContentStore). LiveRouter
 	// serves /live/{id}/playlist.m3u8 + init.mp4 + segment/{n}.
 	whipSrv, err := whip.NewServer(whip.Options{
-		AuthorisedDIDs: splitCSV(cfg.AllowedDIDs),
-		PublicIPs:      splitCSV(cfg.PublicIPs),
+		AuthorisedDIDs:    splitCSV(cfg.AllowedDIDs),
+		PublicIPs:         splitCSV(cfg.PublicIPs),
+		RequireSignatures: cfg.RequireSignatures,
 	})
 	if err != nil {
 		return err

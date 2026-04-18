@@ -26,6 +26,18 @@ export interface WhipOptions {
   /** Optional DID to send in `X-Aevia-DID` for provider-node allowlists. */
   did?: string;
   /**
+   * Optional wallet signer. When provided, the client signs the
+   * outgoing SDP offer via EIP-191 (personal_sign) before POSTing it,
+   * and sends the 65-byte (r||s||v) 0x-hex signature as
+   * `X-Aevia-Signature`. The provider-node recovers the address from
+   * the signature and verifies it matches the DID's address.
+   *
+   * Typical sources:
+   *   - Privy `useSignMessage` hook (prod)
+   *   - `null` in the dev-bypass path (server accepts unsigned)
+   */
+  sign?: (message: string) => Promise<string>;
+  /**
    * Cap for the video encoder's max bitrate in bits/sec (passed to
    * `RTCRtpSender.setParameters()`). Limiting the ceiling smooths
    * Chrome's bandwidth-adaptation ramp — without a cap the encoder
@@ -77,13 +89,25 @@ export async function publishWhip(opts: WhipOptions): Promise<WhipSession> {
   await pc.setLocalDescription(offer);
   await waitForIceGatheringComplete(pc);
 
+  const offerSdp = pc.localDescription?.sdp ?? '';
   const headers: Record<string, string> = { 'Content-Type': 'application/sdp' };
   if (opts.did) headers['X-Aevia-DID'] = opts.did;
+  if (opts.sign && offerSdp) {
+    try {
+      const sig = await opts.sign(offerSdp);
+      headers['X-Aevia-Signature'] = sig.startsWith('0x') ? sig : `0x${sig}`;
+    } catch (err) {
+      // Non-fatal for back-compat — if the wallet refuses to sign we
+      // still try the POST. Providers with RequireSignatures=true will
+      // reject 401, surfacing the problem downstream.
+      console.warn('[whip] sign() failed, posting without signature', err);
+    }
+  }
 
   const res = await fetch(opts.whipUrl, {
     method: 'POST',
     headers,
-    body: pc.localDescription?.sdp ?? '',
+    body: offerSdp,
   });
 
   if (!res.ok) {
