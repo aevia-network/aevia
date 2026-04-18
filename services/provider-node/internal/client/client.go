@@ -231,6 +231,58 @@ type VerifiedContent struct {
 	Segments [][]byte
 }
 
+// FetchAndVerifyByCID is the CID-only viewer API: the caller provides only
+// the content CID (typically resolved from ContentRegistry on-chain) and
+// this method
+//   1. queries the configured Resolver for providers,
+//   2. iterates providers in returned order,
+//   3. ensures a live libp2p connection to each,
+//   4. tries FetchAndVerifyContent, and
+//   5. returns on the first success.
+//
+// If ALL providers fail, returns the last error with count context. This is
+// the failure-mode of the DHT-backed Kill Test: as long as ONE honest,
+// reachable provider remains, the viewer gets authentic bytes.
+func (c *Client) FetchAndVerifyByCID(ctx context.Context, cid string) (*VerifiedContent, error) {
+	providers, err := c.ResolveProviders(ctx, cid, DefaultResolveLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	var lastErr error
+	for _, pid := range providers {
+		if err := c.ensureConnected(ctx, pid); err != nil {
+			lastErr = fmt.Errorf("client: connect %s: %w", pid, err)
+			continue
+		}
+		vc, err := c.FetchAndVerifyContent(ctx, pid, cid)
+		if err == nil {
+			return vc, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("client: all %d providers failed: %w", len(providers), lastErr)
+	}
+	return nil, ErrNoProviders{CID: cid}
+}
+
+// DefaultResolveLimit is the maximum number of providers FetchAndVerifyByCID
+// requests from the resolver. The iteration walks them in order and stops at
+// the first success, so larger limits help resilience at small cost.
+const DefaultResolveLimit = 10
+
+func (c *Client) ensureConnected(ctx context.Context, pid peer.ID) error {
+	if c.host.Network().Connectedness(pid).String() == "Connected" {
+		return nil
+	}
+	info := c.host.Peerstore().PeerInfo(pid)
+	if len(info.Addrs) == 0 {
+		return fmt.Errorf("no addresses known for %s", pid)
+	}
+	return c.host.Connect(ctx, info)
+}
+
 // FetchAndVerifyContent is the viewer-facing API: one call that walks the
 // manifest, downloads every segment, and cryptographically validates each
 // against manifest.Leaves[i]. Returns ErrLeafMismatch at the first divergence
