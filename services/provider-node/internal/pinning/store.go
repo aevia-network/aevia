@@ -107,6 +107,28 @@ func (c *ContentStore) List() ([]string, error) {
 	return out, nil
 }
 
+// PinPayloads is the operator-facing API: given raw segment payloads plus a
+// target segment duration, it computes the canonical manifest, then writes
+// manifest + every segment to storage atomically. The returned manifest's
+// CID is the on-chain anchor that the operator registers in
+// ContentRegistry to advertise this pin.
+//
+// This is the one-call flow for `aevia-node pin <file>` (M5-i8) and any
+// future HTTP ingest endpoint.
+func (c *ContentStore) PinPayloads(payloads [][]byte, segmentDuration int) (*manifest.Manifest, error) {
+	if len(payloads) == 0 {
+		return nil, errors.New("pinning: cannot pin empty payload set")
+	}
+	m, err := manifest.BuildFromPayloads(payloads, segmentDuration)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Pin(m.CID, m, payloads); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Unpin removes the manifest and all segments for cid atomically. Idempotent.
 func (c *ContentStore) Unpin(cid string) error {
 	m, err := c.GetManifest(cid)
