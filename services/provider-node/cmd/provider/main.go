@@ -36,7 +36,19 @@ const shutdownGracePeriod = 10 * time.Second
 
 func main() {
 	logger := logging.Default()
-	if err := run(os.Args[1:], logger); err != nil {
+	args := os.Args[1:]
+	err := dispatch(args, os.Stdout)
+	if err == nil {
+		return
+	}
+	if !errors.Is(err, errDefaultRun) {
+		logger.Fatal().Err(err).Msg("aevia-node subcommand failed")
+	}
+	// Default long-running node path. Strip "run"/"start" prefix if present.
+	if len(args) > 0 && (args[0] == "run" || args[0] == "start") {
+		args = args[1:]
+	}
+	if err := run(args, logger); err != nil {
 		logger.Fatal().Err(err).Msg("aevia provider-node terminated")
 	}
 }
