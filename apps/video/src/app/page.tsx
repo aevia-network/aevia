@@ -13,7 +13,7 @@ export default async function LandingPage({
   const { next } = await searchParams;
 
   if (session) {
-    redirect(next?.startsWith('/') ? next : '/dashboard');
+    redirect(next?.startsWith('/') ? next : '/feed');
   }
 
   return <SignInScreen next={next} />;

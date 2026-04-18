@@ -17,7 +17,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 z-40 flex h-[72px] w-full items-center justify-around bg-surface-container-low px-4">
-      <NavButton label="início" href="/dashboard" active={pathname === '/dashboard'}>
+      <NavButton label="início" href="/feed" active={pathname === '/feed'}>
         <Home className="size-6" aria-hidden />
       </NavButton>
       <NavButton label="descobrir" href="/discover" active={pathname === '/discover'}>
