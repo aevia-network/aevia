@@ -724,6 +724,108 @@ infrastructure. This revenue stack is the basis for the equity
 ROI thesis presented to investors; it is intentionally diverse so
 that no single flow is load-bearing for LLC solvency.
 
+### 6.7 Revenue flow mechanics
+
+This section specifies, normatively, how the revenue enumerated in
+§6.1–§6.5 transitions from on-chain cUSDC custody to the LLC's
+fiat operational accounts. The intent is that a regulator, an
+auditor, a Provider Node operator, or an investor can audit the
+complete end-to-end flow from public information alone, without
+relying on Operator-held confidential disclosures.
+
+#### 6.7.1 Canonical asset
+
+All treasuries enumerated in §3 MUST hold Circle USDC on Base L2.
+The canonical contract address is:
+
+- Mainnet: `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913`
+- Sepolia testnet: `0x036cbd53842c5426634e7929541ec2318f3dcf7e`
+
+This is Circle's native USDC deployment on Base, classified as a
+"permitted payment stablecoin" under the GENIUS Act (July 2025).
+It is NOT Compound cUSDC (which is a yield-bearing wrapper and
+introduces counterparty risk to a lending protocol), NOT USDT (which
+has different regulatory treatment), and NOT DAI (which has
+crypto-collateral exposure). Implementations that confuse these or
+hold any other stablecoin in protocol treasuries MUST be treated
+as non-conformant.
+
+Earlier drafts of this RFC and the `aevia.network/providers` page
+used the term "cUSDC" informally; all references are to Circle USDC
+on Base as specified above. A future editorial revision of this
+document SHOULD standardize terminology to "USDC on Base".
+
+#### 6.7.2 Receipt and accumulation
+
+The LLC Treasury Safe receives USDC via atomic on-chain transfers
+from the four on-chain revenue contracts (BoostRouter, CreatorEscrow,
+Relayer, PersistencePool aggregator fee). Each receipt MUST emit
+the event specified in §9.2 of this RFC. Implementations MUST NOT
+route LLC revenue through intermediate wallets or contracts not
+specified in §3; the LLC Treasury address is the terminal recipient
+for every flow destined for Operator operational capital.
+
+Between sweeps, the LLC Treasury balance accumulates. The accumulated
+balance MUST be auditable in real time by any party via standard
+block explorer query on the Safe address.
+
+#### 6.7.3 Sweep cadence
+
+The Operator SHOULD sweep the LLC Treasury to a Circle Mint corporate
+account on a monthly cadence, executed on the first business day of
+each month. The sweep MAY retain a working balance (recommended:
+$50–$500 USDC equivalent) in the Safe to cover operational gas for
+the following month (administrative transactions, signer additions,
+rebalancing between Safes).
+
+Implementations MAY deviate from monthly cadence for cause (e.g.,
+a payroll cycle that does not align with calendar months, an
+emergency disbursement). Any sweep outside the monthly default MUST
+be documented in the LLC's internal records and made available upon
+reasonable due-diligence request.
+
+#### 6.7.4 Multisig topology
+
+The LLC Treasury Safe MUST implement a minimum M-of-N multisig with
+N ≥ 2 and M ≥ ⌈N/2⌉. Specific topology is LLC-discretionary per
+the operator's risk preference, subject to:
+
+- signer keys MUST be hardware-custodied (no hot keys)
+- seed phrases MUST be stored in separate physical locations
+- each signer MUST be a named human individual (no custodial
+  services as primary signers in bootstrap phase; they MAY serve as
+  recovery signers)
+- the current M, N, and pseudonymous signer identifiers MUST be
+  published on `aevia.network/operator`
+
+As M and N grow, the Operator MUST publish announcements on the
+Trust Ledger (RFC 7 §6) at least 14 days before activation.
+
+#### 6.7.5 Off-ramp
+
+The Operator's preferred off-ramp is Circle Mint corporate account
+(direct 1:1 USDC → USD redemption, zero fee, ACH to US bank in 1-2
+business days). A secondary off-ramp SHOULD be contracted (Coinbase
+Prime, Kraken Institutional, or equivalent regulated exchange) for
+contingency.
+
+The choice of off-ramp is LLC-discretionary. Protocol conformance
+does not require any particular off-ramp provider, only that the
+receiving entity is a regulated counterparty capable of issuing
+AML/KYC-compliant fiat settlement.
+
+#### 6.7.6 Tax structure disclosure
+
+The LLC's tax treatment, jurisdiction of incorporation, and
+residency of signers affect the net revenue the LLC retains. These
+are LLC-discretionary operational decisions, not protocol
+decisions. The Operator publishes a summary of the current tax
+structure on `aevia.network/operator` §7; material changes in
+structure are announced on the Trust Ledger.
+
+This RFC takes no position on specific tax structures. Nothing in
+this document constitutes tax advice.
+
 ---
 
 ## 7. Invariants

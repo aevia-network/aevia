@@ -725,6 +725,59 @@ export const en: Dictionary = {
         threshold: '1-of-1 (decentralization in future rfc)',
       },
     ],
+    operationsTitle: 'operational mechanics',
+    operationsLead:
+      'how on-chain revenue becomes the llc’s operational bank account — canonical token, signers, sweep cadence, off-ramp. decisions dated 2026-04-18 reflect the bootstrap phase; each is revisited as volume or complexity warrants.',
+    tokenTitle: 'canonical token',
+    tokenBody:
+      'the llc receives exclusively circle usdc on base l2. contract: 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 (mainnet) · 0x036cbd53842c5426634e7929541ec2318f3dcf7e (sepolia). this is not compound cusdc (yield-bearing), not usdt, not dai. circle usdc was chosen for three reasons: (i) direct 1:1 redemption via circle mint with no spread nor market counterparty; (ii) clear us regulatory status — the genius act (july 2025) classifies usdc as a "permitted payment stablecoin"; (iii) universal liquidity on regulated exchanges and native integration with base.',
+    flowTitle: 'revenue flow — on-chain to bank',
+    flowItems: [
+      {
+        step: '1',
+        label: 'atomic receipt',
+        detail:
+          'boostrouter / creatorescrow / relayer / persistencepool transfer usdc directly to the llctreasury safe. every receipt emits an auditable on-chain event (rfc-8 inv-9).',
+      },
+      {
+        step: '2',
+        label: 'accumulation',
+        detail:
+          'balance accumulates in the safe during the month. no movement between receipts. any party can audit the balance in real time via block explorer.',
+      },
+      {
+        step: '3',
+        label: 'monthly sweep',
+        detail:
+          'on day 1 of each month, signers approve transfer of the accumulated balance (less ~$50 usdc retained for operational gas the following month) to the llc’s circle mint account.',
+      },
+      {
+        step: '4',
+        label: 'off-ramp',
+        detail:
+          'circle mint converts usdc → usd 1:1, zero fee, ach to the llc bank in 1-2 business days. backup: coinbase prime (otc desk) if circle mint is unavailable or at limit.',
+      },
+      {
+        step: '5',
+        label: 'operations',
+        detail:
+          'llc pays payroll, infrastructure, dev tools, legal and tax services with usd from the operational bank account.',
+      },
+    ],
+    multisigTitle: 'llc treasury multisig',
+    multisigBody:
+      'gnosis safe 2-of-2. signer 1: founder (primary hardware wallet, seed in a physical safe). signer 2: founder’s spouse (independent hardware wallet, seed in a separate physical safe). bootstrap-phase decision reflecting that the llc is currently sole-founder. expansion planned: add a third recovery signer (attorney or cold-storage hardware in a safe deposit box) when either (a) on-chain safe balance exceeds ~$100k average monthly, or (b) an offshore foundation structure is deployed per rfc-8 §9.3.',
+    multisigRisk:
+      'known risk of 2-of-2: loss of both seeds = funds permanently inaccessible. mitigation: seeds in separate physical safes at distinct locations, hardware wallets from different manufacturers (reduces firmware-correlation risk), annual review of backup process. this risk is explicitly accepted until the signer set is expanded; the on-chain average balance is kept low (~1 month of current revenue) to limit exposure.',
+    sweepTitle: 'sweep cadence',
+    sweepBody:
+      'monthly by default, executed on day 1 of each month (next business day if weekend). the sweep moves the entire safe balance except ~$50 usdc retained for eventual operational gas (rebalance between safes, corrections). signers approve via safe ui; signing takes 30-60 seconds. average on-chain balance: approximately one month of current revenue.',
+    offrampTitle: 'off-ramp provider',
+    offrampBody:
+      'circle mint corporate account for aevia llc. direct usdc → usd redemption, 1:1, zero fee, zero spread. ach to us bank in 1-2 business days. initial limit: tbd per circle corporate onboarding (kyc process ~2-4 weeks). backup 1: coinbase prime otc. backup 2: kraken institutional. backups are contracted but not active; reserved for contingency.',
+    taxTitle: 'tax structure',
+    taxBody:
+      'aevia llc is a delaware single-member llc (disregarded entity for us tax). founder is a brazilian tax resident. tax review with a lawyer specialized in us llc + br resident is a prerequisite for material revenue volume. options to evaluate with counsel: (a) llc remains a disregarded entity and founder declares revenue as service income on brazilian irpf; (b) llc elects c-corp treatment (21% corp tax, dividend taxable); (c) interpose an offshore holding (cayman, bvi, jersey) for tax efficiency, at ~$10-30k/year compliance cost; (d) foundation + operational llc structure per signal foundation model, reviewed by specialist counsel. this paragraph is not tax advice and will be updated after consult.',
     changesTitle: 'changes to this page',
     changesBody:
       'material changes (treasury addresses, legal structure, revenue flows, invariants) are announced on the trust ledger (rfc-7 §6) with ≥14 days notice. editorial changes (wording corrections, updated rfc version references) are published immediately and tracked in docs/changelog/.',

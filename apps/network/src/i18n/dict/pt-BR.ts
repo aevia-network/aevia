@@ -722,6 +722,59 @@ export const ptBR = {
         threshold: '1-of-1 (decentralização em rfc futuro)',
       },
     ],
+    operationsTitle: 'mecânica operacional',
+    operationsLead:
+      'como a receita on-chain se torna conta bancária operacional da llc — token canônico, signers, cadência de sweep, off-ramp. decisões tomadas em 2026-04-18 refletem bootstrap phase; cada uma é revista quando volume ou complexidade justificar.',
+    tokenTitle: 'token canônico',
+    tokenBody:
+      'a llc recebe exclusivamente usdc (circle) em base l2. contrato: 0x833589fcd6edb6e08f4c7c32d4f71b54bda02913 (mainnet) · 0x036cbd53842c5426634e7929541ec2318f3dcf7e (sepolia). não é compound cusdc (token de rendimento), não é usdt, não é dai. usdc circle foi escolhido por três razões: (i) redenção 1:1 direta via circle mint sem spread nem contraparte de mercado; (ii) regulamentação clara nos eua sob genius act (jul 2025) classifica usdc como "permitted payment stablecoin"; (iii) liquidez universal em exchanges regulados e integração nativa com base.',
+    flowTitle: 'fluxo de receita — on-chain ao bank',
+    flowItems: [
+      {
+        step: '1',
+        label: 'recebimento atômico',
+        detail:
+          'boostrouter / creatorescrow / relayer / persistencepool transferem usdc diretamente ao llctreasury safe. cada recebimento emite evento auditável on-chain (rfc-8 inv-9).',
+      },
+      {
+        step: '2',
+        label: 'acumulação',
+        detail:
+          'saldo acumula no safe durante o mês. sem movimentação entre recebimentos. qualquer parte pode auditar o saldo em tempo real via block explorer.',
+      },
+      {
+        step: '3',
+        label: 'sweep mensal',
+        detail:
+          'dia 1 de cada mês, signers aprovam transferência do saldo acumulado (menos ~$50 usdc retidos pra gas operacional do mês seguinte) pro circle mint account da llc.',
+      },
+      {
+        step: '4',
+        label: 'off-ramp',
+        detail:
+          'circle mint converte usdc → usd 1:1, zero fee, ach pro banco da llc em 1-2 dias úteis. backup: coinbase prime (otc desk) caso circle mint esteja indisponível ou com limite atingido.',
+      },
+      {
+        step: '5',
+        label: 'operações',
+        detail:
+          'llc paga folha, infraestrutura, dev tools, serviços legais e fiscais com usd na conta bancária operacional.',
+      },
+    ],
+    multisigTitle: 'multisig llc treasury',
+    multisigBody:
+      'gnosis safe 2-of-2. signer 1: fundador (hardware wallet primary, seed em cofre físico). signer 2: cônjuge (hardware wallet independente, seed em cofre físico separado). decisão bootstrap refletindo que a llc é hoje sole-founder. expansão prevista: adicionar terceiro signer recovery (attorney ou cold storage hardware em safe deposit box) quando (a) volume on-chain no safe exceder ~$100k em média mensal, ou (b) estrutura foundation offshore for deployada conforme rfc-8 §9.3.',
+    multisigRisk:
+      'risco conhecido do 2-of-2: perda de ambas as seeds = fundos permanentemente inacessíveis. mitigação: seeds em cofres físicos separados em locais distintos, hardware wallets de fabricantes diferentes (redução de correlation risk via firmware), revisão anual do processo de backup. o risco é explicitamente aceito até a expansão do signer set; o saldo médio on-chain é mantido baixo (~1 mês de receita) pra limitar exposure.',
+    sweepTitle: 'cadência de sweep',
+    sweepBody:
+      'mensal por default, executado no dia 1 de cada mês (próximo dia útil se fim de semana). sweep move todo o saldo do safe exceto ~$50 usdc retidos pra eventual gas operacional (ex: rebalance entre safes, correções). signers aprovam via safe ui; assinatura leva 30-60 segundos. saldo médio on-chain: aproximadamente 1 mês de receita corrente.',
+    offrampTitle: 'off-ramp provider',
+    offrampBody:
+      'circle mint corporate account da aevia llc. redenção usdc → usd direto, 1:1, sem fee, sem spread. ach pro bank us em 1-2 dias úteis. limite inicial: tbd conforme onboarding corporativo circle (processo kyc ~2-4 semanas). backup 1: coinbase prime otc. backup 2: kraken institutional. os backups estão contratados mas não ativados; reservados pra contingência.',
+    taxTitle: 'estrutura tributária',
+    taxBody:
+      'aevia llc é delaware single-member llc (disregarded entity pra us tax). fundador é residente fiscal no brasil. revisão tributária com advogado especializado em us llc + br resident é pré-requisito pra volume material de receita. opções que serão avaliadas com o advogado: (a) llc permanece disregarded entity, fundador declara receita como rendimento de serviço no irpf br; (b) llc elege tratamento c-corp us (21% corp tax, dividendo tributável); (c) interpor holding offshore (cayman, bvi, jersey) pra eficiência tributária, com custo de compliance ~$10-30k/ano; (d) estrutura foundation + operational llc per signal foundation model, reviewed by lawyer especializado. este parágrafo não constitui aconselhamento tributário e será atualizado após consult.',
     changesTitle: 'alterações nesta página',
     changesBody:
       'alterações materiais (endereços de tesouraria, estrutura jurídica, fluxos de receita, invariantes) são anunciadas no trust ledger (rfc-7 §6) com ≥14 dias de antecedência. alterações editoriais (correção de redação, atualização de versão rfc referenciada) são publicadas imediatamente e rastreadas em docs/changelog/.',

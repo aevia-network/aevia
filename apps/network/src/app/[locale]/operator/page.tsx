@@ -166,13 +166,74 @@ export default async function Operator({ params }: { params: Promise<{ locale: s
 
         <section className="mx-auto mt-24 max-w-[72ch]">
           <span className="font-label text-xs text-tertiary tracking-[0.04em]">§7</span>
+          <h2 className="mt-2 font-headline text-3xl font-bold leading-tight">
+            {o.operationsTitle}
+          </h2>
+          <p className="mt-4 max-w-[72ch] text-base leading-[1.7]">{o.operationsLead}</p>
+
+          <div className="mt-8">
+            <h3 className="font-headline text-xl font-bold leading-tight">{o.tokenTitle}</h3>
+            <p className="mt-3 max-w-[72ch] text-base leading-[1.7] text-on-surface-variant">
+              {o.tokenBody}
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="font-headline text-xl font-bold leading-tight">{o.flowTitle}</h3>
+            <ol className="mt-4 space-y-4 max-w-[72ch] text-base leading-[1.7]">
+              {o.flowItems.map((item) => (
+                <li key={item.step} className="flex gap-4">
+                  <span className="font-mono text-sm text-primary shrink-0">[{item.step}]</span>
+                  <div>
+                    <span className="text-accent font-medium">{item.label}</span>
+                    <span className="text-on-surface-variant"> — {item.detail}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="font-headline text-xl font-bold leading-tight">{o.multisigTitle}</h3>
+            <p className="mt-3 max-w-[72ch] text-base leading-[1.7] text-on-surface-variant">
+              {o.multisigBody}
+            </p>
+            <div className="mt-4 max-w-[72ch] rounded-lg border-l-2 border-danger/60 bg-surface-container-low py-3 pl-4">
+              <p className="text-sm leading-[1.6] text-accent">{o.multisigRisk}</p>
+            </div>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="font-headline text-xl font-bold leading-tight">{o.sweepTitle}</h3>
+            <p className="mt-3 max-w-[72ch] text-base leading-[1.7] text-on-surface-variant">
+              {o.sweepBody}
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="font-headline text-xl font-bold leading-tight">{o.offrampTitle}</h3>
+            <p className="mt-3 max-w-[72ch] text-base leading-[1.7] text-on-surface-variant">
+              {o.offrampBody}
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <h3 className="font-headline text-xl font-bold leading-tight">{o.taxTitle}</h3>
+            <p className="mt-3 max-w-[72ch] text-base leading-[1.7] text-on-surface-variant">
+              {o.taxBody}
+            </p>
+          </div>
+        </section>
+
+        <section className="mx-auto mt-24 max-w-[72ch]">
+          <span className="font-label text-xs text-tertiary tracking-[0.04em]">§8</span>
           <h2 className="mt-2 font-headline text-3xl font-bold leading-tight">{o.changesTitle}</h2>
           <p className="mt-4 max-w-[72ch] text-base leading-[1.7]">{o.changesBody}</p>
         </section>
 
         <section className="mx-auto mt-24 max-w-[72ch]">
           <div className="rounded-lg border border-primary-dim/30 bg-surface-container-low p-8">
-            <span className="font-label text-xs text-tertiary">§8 · {o.contactTitle}</span>
+            <span className="font-label text-xs text-tertiary">§9 · {o.contactTitle}</span>
             <p className="mt-2 max-w-[72ch] text-base text-on-surface-variant leading-[1.7]">
               {o.contactBody1}{' '}
               <a
