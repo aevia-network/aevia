@@ -25,10 +25,11 @@ func (m Mode) Valid() bool { return m == ModeProvider || m == ModeRelay }
 
 // Config groups all runtime knobs.
 type Config struct {
-	Mode     Mode
-	DataDir  string
-	Listen   string // libp2p multiaddr, for example /ip4/0.0.0.0/tcp/4001
-	HTTPAddr string // plain HTTP listen address, used by Provider Público mode
+	Mode           Mode
+	DataDir        string
+	Listen         string // libp2p multiaddr, for example /ip4/0.0.0.0/tcp/4001
+	HTTPAddr       string // plain HTTP listen address, used by Provider Público mode
+	BootstrapPeers string // comma-separated /p2p-terminated multiaddrs
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -61,6 +62,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.DataDir, "data-dir", cfg.DataDir, "directory for persistent state (identity key, pinning)")
 	fs.StringVar(&cfg.Listen, "listen", cfg.Listen, "libp2p multiaddr to listen on")
 	fs.StringVar(&cfg.HTTPAddr, "http-addr", cfg.HTTPAddr, "plain HTTP listen address for Provider Público path")
+	fs.StringVar(&cfg.BootstrapPeers, "bootstrap", cfg.BootstrapPeers, "comma-separated /p2p-terminated multiaddrs to bootstrap the DHT from")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
 	}
@@ -96,6 +98,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_HTTP_ADDR"); v != "" {
 		cfg.HTTPAddr = v
+	}
+	if v := os.Getenv("AEVIA_BOOTSTRAP"); v != "" {
+		cfg.BootstrapPeers = v
 	}
 }
 
