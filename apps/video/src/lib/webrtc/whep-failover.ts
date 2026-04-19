@@ -174,7 +174,16 @@ export function playWhepWithFailover(opts: FailoverOptions): FailoverHandle {
               connected = true;
               emit('connected');
             }
-            if (state === 'failed' || state === 'closed' || state === 'disconnected') {
+            // `disconnected` is transient per W3C — NIC blip, ICE roam,
+            // brief packet loss drop the state momentarily and it
+            // transitions back to `connected` on its own. Acting on it
+            // produces false failovers whenever the network coughs,
+            // especially on mobile 4G paths with peer-reflexive ICE
+            // candidates and no TURN relay. Same bug was fixed on the
+            // WHIP publisher side in commit e31877a — keep the two
+            // sides symmetric. `failed` and `closed` are terminal per
+            // spec and we still tear down on those.
+            if (state === 'failed' || state === 'closed') {
               broken = true;
             }
           },
