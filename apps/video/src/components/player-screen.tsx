@@ -1113,11 +1113,9 @@ function ChatBlock() {
 // ---- Mocks ---------------------------------------------------------------
 
 const MOCK_REACTION_COUNTS = {
-  amem: 428,
-  orar: 211,
   boost: 87,
   salvar: 43,
-  apoiar: 22,
+  compartilhar: 14,
 } as const;
 
 const MOCK_PRESENCE = [

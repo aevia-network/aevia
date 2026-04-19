@@ -232,7 +232,7 @@ export function CreatorScreen({
             disabled
             className="flex-1 rounded-lg border border-secondary py-3 text-center font-label font-medium text-secondary opacity-50"
           >
-            apoiar
+            boost
           </button>
           <button
             type="button"

@@ -243,9 +243,9 @@ interface FeedPost {
   viewsLabel: string;
   peersLabel: string;
   reactionCounts: {
-    amem?: number;
-    orar?: number;
     boost?: number;
+    salvar?: number;
+    compartilhar?: number;
   };
 }
 
@@ -262,7 +262,7 @@ const MOCK_POSTS: FeedPost[] = [
     durationOrState: 'ao vivo · 18 min',
     viewsLabel: '2.341 visualizações',
     peersLabel: '47 peers compartilhando',
-    reactionCounts: { amem: 142, orar: 88, boost: 34 },
+    reactionCounts: { boost: 34, salvar: 18, compartilhar: 7 },
   },
   {
     id: 'mock-2',
@@ -276,7 +276,7 @@ const MOCK_POSTS: FeedPost[] = [
     durationOrState: '12 min · vod',
     viewsLabel: '18 mil visualizações',
     peersLabel: '112 peers',
-    reactionCounts: { amem: 420, boost: 52 },
+    reactionCounts: { boost: 52, salvar: 81, compartilhar: 12 },
   },
 ];
 

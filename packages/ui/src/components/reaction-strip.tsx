@@ -1,23 +1,35 @@
-// ReactionStrip — fixed 6-chip row expressing Aevia's reaction vocabulary.
+// ReactionStrip — three protocol-weighted chips expressing Aevia's reaction vocabulary.
 
-import { Bookmark, Gift, HandHelping, HeartHandshake, Share2, Zap } from 'lucide-react';
+import { Bookmark, Share2, Zap } from 'lucide-react';
 import type * as React from 'react';
 import { cn } from '../lib/cn';
 
 /**
- * ReactionStrip — six fixed chips expressing Aevia's reaction vocabulary.
+ * ReactionStrip — three fixed chips, one per protocol dimension Aevia surfaces.
  *
- * The vocabulary is intentional and NOT configurable. It maps to the social
- * primitives the platform surfaces: `amem` (agreement/amen), `orar` (pray),
- * `boost` (amplify), `salvar` (bookmark), `apoiar` (support via credits),
- * `compartilhar` (share). Order is fixed.
+ * The vocabulary is intentional and NOT configurable. Every reaction carries
+ * a load-bearing protocol primitive — there are no "empty likes". The set:
+ *
+ *   - `boost`        — economic.    RFC-8 §4 BoostRouter (non-custodial 4-way
+ *                                   split: creator + persistence pool +
+ *                                   council fund + LLC treasury).
+ *   - `salvar`       — persistente. RFC-3 PersistencePool (each save = one
+ *                                   peer holding the content; carries
+ *                                   replication factor for the manifest).
+ *   - `compartilhar` — distributivo. RFC-9 discovery (off-chain propagation
+ *                                   signal feeding ranking / feed surfacing).
+ *
+ * Earlier iterations included `amem` / `orar` (Christian-explicit) and
+ * `apoiar` (semantic dup of `boost`); both were dropped during the
+ * generalist reframe (TODO §15) so the UI matches the universal-TAM stance
+ * of aevia.network. Order is fixed.
  *
  * Usage:
  *
  * ```tsx
  * <ReactionStrip
- *   active={['amem']}
- *   counts={{ amem: 128, boost: 7 }}
+ *   active={['boost']}
+ *   counts={{ boost: 128, salvar: 12 }}
  *   onReact={(kind) => toggleReaction(kind)}
  * />
  * ```
@@ -27,7 +39,7 @@ import { cn } from '../lib/cn';
  * - `bg-surface-container-high` / `text-on-surface` — inactive chip.
  */
 
-export type ReactionKind = 'amem' | 'orar' | 'boost' | 'salvar' | 'apoiar' | 'compartilhar';
+export type ReactionKind = 'boost' | 'salvar' | 'compartilhar';
 
 export interface ReactionStripProps {
   /** Current set of reactions the viewer has already applied. */
@@ -41,21 +53,11 @@ export interface ReactionStripProps {
   className?: string;
 }
 
-const ORDER: readonly ReactionKind[] = [
-  'amem',
-  'orar',
-  'boost',
-  'salvar',
-  'apoiar',
-  'compartilhar',
-];
+const ORDER: readonly ReactionKind[] = ['boost', 'salvar', 'compartilhar'];
 
 const ICONS: Record<ReactionKind, React.ComponentType<{ className?: string }>> = {
-  amem: HeartHandshake,
-  orar: HandHelping,
   boost: Zap,
   salvar: Bookmark,
-  apoiar: Gift,
   compartilhar: Share2,
 };
 
