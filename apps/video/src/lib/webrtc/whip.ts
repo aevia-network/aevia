@@ -55,6 +55,16 @@ export interface WhipOptions {
    * back to the legacy single-encoding + `maxVideoBitrate` cap path.
    */
   simulcastLayers?: SimulcastLayer[];
+  /**
+   * When true, the session's `stop()` skips the DELETE on the WHIP resource
+   * URL and just closes the local RTCPeerConnection. Use for backends whose
+   * resource URLs are on origins that don't return permissive CORS headers
+   * for cross-origin DELETE — e.g. Livepeer POPs return 405 + CORS-blocked
+   * preflight when the browser tries to terminate the session, even though
+   * the broadcast itself worked. Server-side cleanup happens via the
+   * upstream's idle/packet-loss timeout (~30s for Livepeer).
+   */
+  skipResourceDelete?: boolean;
 }
 
 /** Default cap applied when `WhipOptions.maxVideoBitrate` is unset. */
@@ -219,7 +229,7 @@ export async function publishWhip(opts: WhipOptions): Promise<WhipSession> {
 
   const stop = async () => {
     try {
-      if (absoluteResourceUrl) {
+      if (absoluteResourceUrl && !opts.skipResourceDelete) {
         await fetch(absoluteResourceUrl, { method: 'DELETE' }).catch(() => undefined);
       }
     } finally {

@@ -108,6 +108,14 @@ export interface WhepOptions {
    * so dev inspection is URL-driven, invisible in prod.
    */
   debugLog?: boolean;
+  /**
+   * When true, the session's `stop()` skips the DELETE on the WHEP resource
+   * URL and just closes the local RTCPeerConnection. Use for backends whose
+   * resource URLs are on origins that don't return permissive CORS headers
+   * for cross-origin DELETE — Livepeer POPs in particular. See WHIP twin
+   * for the same trade-off rationale.
+   */
+  skipResourceDelete?: boolean;
 }
 
 export async function playWhep(opts: WhepOptions): Promise<WhepSession> {
@@ -190,7 +198,7 @@ export async function playWhep(opts: WhepOptions): Promise<WhepSession> {
       pollHandle = undefined;
     }
     try {
-      if (absoluteResourceUrl) {
+      if (absoluteResourceUrl && !opts.skipResourceDelete) {
         await fetch(absoluteResourceUrl, { method: 'DELETE' }).catch(() => undefined);
       }
     } finally {
