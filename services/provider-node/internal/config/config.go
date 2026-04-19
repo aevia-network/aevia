@@ -39,6 +39,12 @@ type Config struct {
 	// reachable via the same libp2p host (bootstrap peers or existing
 	// connections). Self-references are silently skipped.
 	MirrorPeers string
+	// WebSocketListen (Fase 3.1) enables a libp2p WebSocket listener
+	// so browsers running js-libp2p can dial this node. Empty disables.
+	// Typical dev: /ip4/127.0.0.1/tcp/4002/ws ; production lives behind
+	// a reverse proxy (Caddy / Cloudflare Tunnel) that terminates TLS
+	// and forwards the HTTP Upgrade frame.
+	WebSocketListen string
 	// ForceReachability overrides AutoNAT detection. Empty, "public", or
 	// "private". Public is for Relay Nodes on VPS that auto-detection
 	// sometimes misclassifies; "private" is for NAT Provider Nodes that
@@ -139,6 +145,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&cfg.BootstrapPeers, "bootstrap", cfg.BootstrapPeers, "comma-separated /p2p-terminated multiaddrs to bootstrap the DHT from")
 	fs.StringVar(&cfg.RelayPeers, "relay-peers", cfg.RelayPeers, "comma-separated /p2p-terminated multiaddrs of Circuit Relay v2 nodes to reserve slots on (for NAT Provider Nodes)")
 	fs.StringVar(&cfg.MirrorPeers, "mirror-peers", cfg.MirrorPeers, "comma-separated libp2p peer IDs to mirror every WHIP session's RTP stream to (empty OR \"AUTO\" enables dynamic selection)")
+	fs.StringVar(&cfg.WebSocketListen, "ws-listen", cfg.WebSocketListen, "libp2p WebSocket listen multiaddr for browser peers (Fase 3.1, empty disables; example /ip4/127.0.0.1/tcp/4002/ws)")
 	fs.Float64Var(&cfg.MirrorRankAlpha, "mirror-rank-alpha", cfg.MirrorRankAlpha, "mirror rank weight — RTT multiplier (default 1.0)")
 	fs.Float64Var(&cfg.MirrorRankBeta, "mirror-rank-beta", cfg.MirrorRankBeta, "mirror rank weight — load multiplier (default 10.0)")
 	fs.Float64Var(&cfg.MirrorRankGamma, "mirror-rank-gamma", cfg.MirrorRankGamma, "mirror rank weight — region_penalty multiplier (default 50.0)")
@@ -219,6 +226,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("AEVIA_MIRROR_PEERS"); v != "" {
 		cfg.MirrorPeers = v
+	}
+	if v := os.Getenv("AEVIA_WS_LISTEN"); v != "" {
+		cfg.WebSocketListen = v
 	}
 	if v := os.Getenv("AEVIA_MIRROR_RANK_ALPHA"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {

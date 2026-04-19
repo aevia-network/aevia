@@ -7,6 +7,28 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 )
 
+// TestBuildNodeConfigPropagatesWebSocketListen covers Fase 3.1: the
+// --ws-listen flag / AEVIA_WS_LISTEN env must reach node.Config so
+// browsers running js-libp2p can dial the provider over WSS.
+func TestBuildNodeConfigPropagatesWebSocketListen(t *testing.T) {
+	priv, err := identity.LoadOrCreate(t.TempDir())
+	if err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	const wsAddr = "/ip4/127.0.0.1/tcp/4002/ws"
+	nc, err := buildNodeConfig(config.Config{
+		Mode:            config.ModeProvider,
+		Listen:          "/ip4/127.0.0.1/tcp/0",
+		WebSocketListen: wsAddr,
+	}, priv)
+	if err != nil {
+		t.Fatalf("buildNodeConfig: %v", err)
+	}
+	if nc.WebSocketListen != wsAddr {
+		t.Errorf("WebSocketListen = %q, want %q", nc.WebSocketListen, wsAddr)
+	}
+}
+
 func TestBuildNodeConfigProviderWithoutRelays(t *testing.T) {
 	priv, err := identity.LoadOrCreate(t.TempDir())
 	if err != nil {

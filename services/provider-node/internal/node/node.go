@@ -46,6 +46,14 @@ type Config struct {
 
 	// DisableMetrics is reserved for future Prometheus integration.
 	DisableMetrics bool
+
+	// WebSocketListen (Fase 3.1) enables a WebSocket listener so
+	// browsers running js-libp2p can dial this node directly.
+	// Example: "/ip4/127.0.0.1/tcp/4002/ws" behind a reverse proxy
+	// that terminates TLS and routes /libp2p/* WebSocket upgrades.
+	// Empty disables the WS transport — viewers keep using WHEP +
+	// DHT resolve only (no P2P mesh layer).
+	WebSocketListen string
 }
 
 // Node owns a libp2p host and exposes lifecycle helpers.
@@ -64,6 +72,16 @@ func New(cfg Config) (*Node, error) {
 	addrs := cfg.ListenAddrs
 	if len(addrs) == 0 {
 		addrs = []string{"/ip4/0.0.0.0/tcp/0"}
+	}
+	// Fase 3.1 — browsers cannot open raw TCP libp2p, they need WSS.
+	// When WebSocketListen is set, we add the multiaddr to the listen
+	// list; go-libp2p's default transport stack includes the WS driver,
+	// so no extra option is needed. Browsers reach this listener via
+	// a reverse proxy (Caddy or Cloudflare Tunnel) that terminates TLS
+	// and forwards WebSocket upgrades. The multiaddr advertised back
+	// to browsers uses /wss to signal TLS expectation.
+	if cfg.WebSocketListen != "" {
+		addrs = append(addrs, cfg.WebSocketListen)
 	}
 
 	opts := []libp2p.Option{

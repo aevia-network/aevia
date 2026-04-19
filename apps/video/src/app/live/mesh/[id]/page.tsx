@@ -80,6 +80,9 @@ export default async function MeshLiveViewerPage({
       aeviaWhepUrl={`${base}/whep/${id}`}
       aeviaSessionId={id}
       aeviaFailoverCandidates={failoverCandidates}
+      aeviaLibp2pBootstraps={parseLibp2pBootstrapsInline(
+        process.env.NEXT_PUBLIC_AEVIA_LIBP2P_BOOTSTRAPS ?? '',
+      )}
       vodProcessing={false}
       creatorDisplayName="aevia"
       creatorAddress={null}
@@ -89,5 +92,17 @@ export default async function MeshLiveViewerPage({
       registerBlock={null}
       registerTxHash={null}
     />
+  );
+}
+
+// Inlined to avoid pulling p2p.ts (which imports libp2p — ~400 KB
+// bundle) into the server/edge worker. Same shape as
+// parseLibp2pBootstraps in lib/mesh/p2p.ts. Keep in sync.
+function parseLibp2pBootstrapsInline(raw: string): string[] {
+  return (
+    raw
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? []
   );
 }

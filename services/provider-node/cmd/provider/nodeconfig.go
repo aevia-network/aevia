@@ -26,6 +26,7 @@ func buildNodeConfig(appCfg config.Config, priv crypto.PrivKey) (node.Config, er
 		PrivKey:           priv,
 		ListenAddrs:       []string{appCfg.Listen},
 		ForceReachability: appCfg.ForceReachability,
+		WebSocketListen:   appCfg.WebSocketListen,
 	}
 
 	switch appCfg.Mode {

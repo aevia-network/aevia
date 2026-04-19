@@ -2,6 +2,7 @@
 
 import { BottomNav } from '@/components/bottom-nav';
 import { explorerTxUrl } from '@/lib/chain';
+import type { MeshHandle } from '@/lib/mesh/p2p';
 import { fetchIceServers } from '@/lib/webrtc/ice';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
 import {
@@ -84,6 +85,16 @@ export interface PlayerScreenProps {
    * `aeviaWhepUrl` wins (keeps existing deployments working).
    */
   aeviaFailoverCandidates?: FailoverCandidate[];
+  /**
+   * libp2p WSS bootstrap multiaddrs the browser dials to join the
+   * session's GossipSub topic (Fase 3.1). Example entry:
+   *   /dns4/provider.aevia.network/tcp/443/wss/p2p/12D3Koo...
+   * Empty disables the P2P scaffold entirely. When non-empty AND
+   * ?p2p=1 is in the URL, the viewer boots a browser libp2p node,
+   * joins topic `aevia-live-{sessionId}`, and publishes heartbeats.
+   * Bandwidth cost: ~300-400 KB gzipped (dynamically imported).
+   */
+  aeviaLibp2pBootstraps?: string[];
   vodProcessing?: boolean;
   creatorDisplayName: string;
   creatorAddress: `0x${string}` | null;
@@ -111,6 +122,13 @@ export function PlayerScreen(props: PlayerScreenProps) {
   // rule while keeping the names self-documenting at the call site.
   const [_failoverState, setFailoverState] = useState<FailoverState>('idle');
   const [_activePeerId, setActivePeerId] = useState<string | null>(null);
+
+  // P2P browser mesh state (Fase 3.1). Lazy-loaded when ?p2p=1.
+  const meshHandleRef = useRef<MeshHandle | null>(null);
+  const [meshStats, setMeshStats] = useState<{
+    connected: number;
+    topicPeers: number;
+  } | null>(null);
 
   const [vodStatus, setVodStatus] = useState<VodStatus>('idle');
   const [vodError, setVodError] = useState<string | null>(null);
@@ -223,6 +241,62 @@ export function PlayerScreen(props: PlayerScreenProps) {
       };
     }
   }, [mode, startLive, effectiveWhepUrl, props.aeviaFailoverCandidates, props.aeviaSessionId]);
+
+  // Fase 3.1 P2P browser mesh — opt-in via ?p2p=1 URL param. Dynamic
+  // import keeps the ~400 KB libp2p bundle out of the initial page
+  // load. When enabled, browser joins GossipSub topic, publishes
+  // heartbeats, and renders a debug chip showing peer count. This
+  // is pure observability in 3.1 — no video delivery yet; Fase 3.2
+  // adds chunk relay + 3.3 adds WebRTC RTP relay viewer-to-viewer.
+  useEffect(() => {
+    if (mode !== 'live') return;
+    if (typeof window === 'undefined') return;
+    const p2pEnabled = new URLSearchParams(window.location.search).get('p2p') === '1';
+    if (!p2pEnabled) return;
+    if (!props.aeviaSessionId) return;
+    const bootstraps = props.aeviaLibp2pBootstraps ?? [];
+    if (bootstraps.length === 0) return;
+
+    let cancelled = false;
+    let statusPoll: ReturnType<typeof setInterval> | undefined;
+    void (async () => {
+      try {
+        const mod = await import('@/lib/mesh/p2p');
+        if (cancelled) return;
+        const handle = await mod.initMesh({
+          sessionId: props.aeviaSessionId as string,
+          bootstraps,
+          heartbeatIntervalMs: 5_000,
+        });
+        if (cancelled) {
+          await handle.stop();
+          return;
+        }
+        meshHandleRef.current = handle;
+        // Poll status every 2s — cheap (reads in-memory counters)
+        // and sufficient UX feedback for the debug chip.
+        statusPoll = setInterval(() => {
+          const s = handle.status();
+          setMeshStats({ connected: s.connectedPeerCount, topicPeers: s.topicPeerCount });
+        }, 2_000);
+        // Immediate first snapshot.
+        const s0 = handle.status();
+        setMeshStats({ connected: s0.connectedPeerCount, topicPeers: s0.topicPeerCount });
+      } catch {
+        // libp2p boot failure → silent. User sees no chip, no error
+        // overlay. 3.1 is opt-in experimental; hard failures here
+        // MUST NOT degrade the main viewing path.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (statusPoll) clearInterval(statusPoll);
+      void meshHandleRef.current?.stop();
+      meshHandleRef.current = null;
+      setMeshStats(null);
+    };
+  }, [mode, props.aeviaSessionId, props.aeviaLibp2pBootstraps]);
 
   // Aevia-mesh live playback via hls.js — used as fallback when WHEP
   // isn't configured. Keeps the same <video> element WHEP uses so the
@@ -449,6 +523,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
           elapsedLabel={elapsedLabel}
           autoplayBlocked={autoplayBlocked}
           onUnmute={unmute}
+          meshStats={meshStats}
         />
 
         <div className="flex flex-col gap-6 px-4 pt-5">
@@ -614,6 +689,7 @@ function PlayerFrame({
   elapsedLabel,
   autoplayBlocked,
   onUnmute,
+  meshStats,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   mode: ViewerMode;
@@ -622,6 +698,7 @@ function PlayerFrame({
   elapsedLabel: string;
   autoplayBlocked: boolean;
   onUnmute: () => void;
+  meshStats: { connected: number; topicPeers: number } | null;
 }) {
   const isLivePlaying = mode === 'live' && liveStatus === 'playing';
   const isVodPlaying = mode === 'vod' && vodStatus === 'playing';
@@ -657,6 +734,13 @@ function PlayerFrame({
       {(isLivePlaying || isVodPlaying) && (
         <span className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-sm bg-black/60 px-2 py-1 font-label text-[10px] text-white lowercase">
           + 298 assistindo · amostra
+        </span>
+      )}
+
+      {/* Fase 3.1 — P2P mesh debug chip (only when ?p2p=1 + mesh active). */}
+      {meshStats && (
+        <span className="absolute top-10 right-3 inline-flex items-center gap-1.5 rounded-sm bg-primary/30 px-2 py-1 font-label font-medium text-[10px] text-white lowercase">
+          p2p · {meshStats.connected} conectado · {meshStats.topicPeers} na sala
         </span>
       )}
 
