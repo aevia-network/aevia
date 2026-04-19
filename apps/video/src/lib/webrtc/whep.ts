@@ -10,7 +10,7 @@
  * summary is printed at first decoded frame.
  */
 
-import { DEFAULT_ICE_SERVERS, waitForIceGatheringComplete } from './ice';
+import { DEFAULT_ICE_SERVERS, inspectCandidatePair, waitForIceGatheringComplete } from './ice';
 
 export interface WhepSession {
   pc: RTCPeerConnection;
@@ -141,6 +141,8 @@ export async function playWhep(opts: WhepOptions): Promise<WhepSession> {
       startFirstFrameProbe(pc, timings, opts, (at) => {
         firstFrameDecodedAt = at;
       });
+      // Telemetry: did TURN relay save this viewer? See ice.ts jsdoc.
+      void inspectCandidatePair(pc, 'whep');
     }
     opts.onConnectionStateChange?.(pc.connectionState);
   });
