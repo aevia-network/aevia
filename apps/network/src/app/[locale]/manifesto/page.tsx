@@ -35,13 +35,13 @@ export default async function Manifesto({
     <>
       <Nav active="manifesto" locale={locale} dict={dict} pathname={pathname} />
 
-      <main className="mx-auto max-w-[1440px] px-12">
-        <article className="mx-auto max-w-[72ch] pt-[200px] pb-[120px]">
+      <main className="mx-auto max-w-[1440px] px-6 md:px-12">
+        <article className="mx-auto max-w-[72ch] pt-[120px] md:pt-[200px] pb-[80px] md:pb-[120px]">
           <header className="flex flex-col gap-6">
             <span className="font-label text-[13px] tracking-[0.04em] text-tertiary">
               {m.eyebrow}
             </span>
-            <h1 className="font-headline text-[96px] font-bold leading-[1.05] tracking-tight">
+            <h1 className="font-headline text-5xl md:text-[96px] font-bold leading-[1.05] tracking-tight">
               {m.title}
             </h1>
             <p className="text-base text-on-surface-variant">{m.byline}</p>

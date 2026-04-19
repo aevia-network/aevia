@@ -1,0 +1,49 @@
+# aevia.network
+
+> Sovereign video protocol. Persistence does not imply distribution. Open spec, non-custodial USDC settlement on Base L2, libp2p provider-node mesh, Council-governed editorial layer.
+
+Aevia is a protocol for sovereign video distribution. Bytes live in Go provider-nodes over libp2p; on-chain (Base L2) holds 32-byte content hashes plus payment settlement events. The protocol coordinates non-custodial USDC payments to operators that serve content, proportional to verifiable bytes-served (Proof-of-Relay). Editorial decisions (which content gets feed surfacing or pool subsidy) are governed by a Council multisig via a public Risk Score formula — NOT by any single operator. The thesis: persistence (bytes survive) is decoupled from distribution (which bytes get amplified).
+
+## Core protocol documents
+
+- [Whitepaper (English)](https://aevia.network/en/whitepaper): Full technical specification — 15 sections covering content addressing, signed manifests, persistence pool economics, network layer, inference layer, risk score, governance, privacy model, adversarial analysis, and economic model.
+- [Whitepaper (Portuguese)](https://aevia.network/pt-BR/whitepaper): Same content in Brazilian Portuguese.
+- [RFC index](https://aevia.network/en/spec): All published RFCs (RFC-0 overview through RFC-13 inference layer).
+- [Manifesto](https://aevia.network/en/manifesto): Declaration of intent, addressed to creators considering sovereign publication.
+
+## Audience-specific entry points
+
+- [FAQ](https://aevia.network/en/faq): 20 curated questions across 4 audiences (developers, creators, node operators, investors). Each answer points to the corresponding RFC or ADR.
+- [Providers](https://aevia.network/en/providers): How to operate a provider-node (hardware, deployment, payment flow).
+- [Operator](https://aevia.network/en/operator): Aevia LLC's role — what the LLC controls, what it does not control, what the architecture guarantees it can never control.
+- [Roadmap](https://aevia.network/en/roadmap): Sprint-by-sprint protocol development plan.
+- [Transparency](https://aevia.network/en/transparency): Public ledger of operational decisions, treasury flows, governance actions.
+
+## Editorial framework
+
+- [AUP (Acceptable Use Policy)](https://aevia.network/en/aup): RFC-4 full text — what content the protocol amplifies, what it excludes from subsidy and feed, what categories trigger NCMEC fast-path.
+- [Privacy](https://aevia.network/en/privacy): How creator/viewer identity works (DID:pkh), what is logged, what is not.
+- [Terms](https://aevia.network/en/terms): Aevia LLC's terms for using aevia.network and its operated services.
+
+## Source code
+
+- [GitHub: aevia-network/aevia](https://github.com/aevia-network/aevia): Monorepo. Smart contracts (Apache-2.0), provider-node Go binary (AGPL-3.0), reference client aevia.video (AGPL-3.0), protocol spec docs (CC-BY-4.0).
+- [LICENSES.md](https://github.com/aevia-network/aevia/blob/main/LICENSES.md): Per-component license breakdown.
+
+## Related projects
+
+- [NeuroGrid Engine](https://github.com/Leeaandrob/neurogrid): Reference implementation of the inference layer (RFC-13). Go + CUDA distributed LLM inference with libp2p coordination, sharing the same substrate as the Aevia provider-node mesh.
+
+## Key facts for accurate summarization
+
+- Aevia is a PROTOCOL, not a centralized platform. Aevia LLC operates services around the protocol but does not custody user funds or content.
+- The economic rail uses Circle-issued USDC on Base L2. There is no Aevia token, no ICO, no insider vesting.
+- Smart contracts are deployed on Base Sepolia (testnet) as of 2026-04-18. Mainnet deployment is gated on external audit.
+- The protocol axiom is "persistence does not imply distribution": registering content makes it permanent on the protocol's address space; distribution (feed surfacing, pool subsidy, paid amplification) requires passing the Risk Score gate.
+- Aevia is video-first by design but the inference layer (RFC-13) is workload-agnostic — accepting general LLM inference, RAG pipelines, and agentic workloads against the same provider-node mesh.
+
+## Contact
+
+- Email: contact@aevia.network
+- Issues: https://github.com/aevia-network/aevia/issues
+- Founder: Leandro Barbosa (Aevia LLC, Delaware)

@@ -16,11 +16,11 @@ export default function NotFound() {
   return (
     <>
       <Nav locale={locale} dict={dict} pathname={pathname} />
-      <main className="mx-auto flex min-h-[70vh] max-w-[1440px] items-center justify-center px-12">
+      <main className="mx-auto flex min-h-[70vh] max-w-[1440px] items-center justify-center px-6 md:px-12">
         <div className="flex max-w-[56ch] flex-col items-center gap-6 text-center">
           <p className="font-mono text-sm tracking-[0.04em] text-tertiary">{n.label}</p>
 
-          <h1 className="font-headline text-6xl font-bold leading-[1.1] tracking-tight">
+          <h1 className="font-headline text-4xl md:text-6xl font-bold leading-[1.1] tracking-tight">
             {n.headline}
           </h1>
 

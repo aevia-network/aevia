@@ -37,8 +37,8 @@ export default async function Whitepaper({
     <>
       <Nav active="whitepaper" locale={locale} dict={dict} pathname={pathname} />
       <main className="bg-background text-accent">
-        <div className="mx-auto w-full max-w-[1440px] px-8 pb-32">
-          <div className="grid grid-cols-1 gap-16 lg:grid-cols-[280px_minmax(0,92ch)_1fr]">
+        <div className="mx-auto w-full max-w-[1440px] px-6 md:px-8 pb-32">
+          <div className="grid grid-cols-1 gap-8 lg:gap-16 lg:grid-cols-[280px_minmax(0,92ch)_1fr]">
             <aside data-print-hide="true" className="sticky top-[100px] hidden self-start lg:block">
               <div className="pt-[200px]">
                 <span className="font-label text-xs tracking-[0.04em] text-tertiary">
@@ -70,17 +70,17 @@ export default async function Whitepaper({
             </aside>
 
             <article className="max-w-[92ch]">
-              <header className="pt-[200px]">
+              <header className="pt-[120px] md:pt-[200px]">
                 <div className="flex items-center gap-3">
                   <MeshDot />
                   <span className="font-label text-xs tracking-[0.04em] text-tertiary">
                     {w.eyebrow}
                   </span>
                 </div>
-                <h1 className="mt-8 font-headline text-[112px] font-bold leading-[1.05] tracking-tight">
+                <h1 className="mt-8 font-headline text-5xl md:text-7xl lg:text-[112px] font-bold leading-[1.05] tracking-tight">
                   {w.title}
                 </h1>
-                <p className="mt-6 max-w-[72ch] text-2xl text-on-surface-variant">{w.subtitle}</p>
+                <p className="mt-6 max-w-[72ch] text-lg md:text-2xl text-on-surface-variant">{w.subtitle}</p>
                 <p className="mt-8 font-mono text-sm text-on-surface-variant">{w.author}</p>
               </header>
 
