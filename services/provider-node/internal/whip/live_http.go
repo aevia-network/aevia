@@ -10,24 +10,74 @@ import (
 )
 
 // LiveRouter attaches live-session-scoped HTTP routes to the content
-// surface:
+// surface. Two serving modes coexist:
 //
-//	GET /live/{sessionID}/playlist.m3u8   — HLS media playlist (live)
-//	GET /live/{sessionID}/init.mp4         — fMP4 init segment
-//	GET /live/{sessionID}/segment/{n}.mp4  — fMP4 media segment
+//	A — gohlslib muxer (current default via Attach*Muxer):
+//	  The HLSMuxer owns playlist.m3u8 + segments + init.mp4 under
+//	  the same /live/{id}/ prefix. LiveRouter strips the prefix and
+//	  delegates to muxer.Handler(). This is the path we chose after
+//	  the hand-rolled CMAFSegmenter + parts emitted bitstreams that
+//	  only hls.js tolerated (VLC/ffplay broke on strict decode).
 //
-// M8 ships classic HLS (not LL-HLS EXT-X-PART) — hls.js plays it with
-// ~10s latency. LL-HLS partial segments land in M8.5 for sub-3s.
+//	B — legacy sink (kept for backwards-compat + Merkle manifest):
+//	  The LivePinSink path rebuilt init/segments/parts from the
+//	  sink's pinning.ContentStore. Still serves the VOD
+//	  /live/{id}/manifest.json endpoint even in muxer mode because
+//	  the Merkle root is sink-owned and independent of the serving
+//	  format.
+//
+// A session may have both a muxer AND a sink attached. When both
+// exist, the muxer wins for playlist/init/segment/part. The sink
+// always wins for manifest.json (VOD manifest only emerges after
+// Finalize).
 type LiveRouter struct {
-	mu   sync.Mutex
-	pins map[string]*LivePinSink // sessionID -> sink
+	mu     sync.Mutex
+	pins   map[string]*LivePinSink // sessionID -> sink (legacy + Merkle manifest)
+	muxers map[string]*HLSMuxer    // sessionID -> gohlslib muxer (HLS serving)
 }
 
 // NewLiveRouter returns an empty router. Sessions register via
-// AttachSession as they start; the WHIP OnSession callback is the
-// natural call site.
+// AttachSession (sink) and/or AttachMuxer (muxer) as they start;
+// the WHIP OnSession callback is the natural call site.
 func NewLiveRouter() *LiveRouter {
-	return &LiveRouter{pins: make(map[string]*LivePinSink)}
+	return &LiveRouter{
+		pins:   make(map[string]*LivePinSink),
+		muxers: make(map[string]*HLSMuxer),
+	}
+}
+
+// AttachMuxer registers a gohlslib-backed HLSMuxer for the session.
+// Idempotent per-session — a session can only have one muxer.
+func (r *LiveRouter) AttachMuxer(sessionID string, mux *HLSMuxer) error {
+	if sessionID == "" {
+		return errors.New("live: empty sessionID")
+	}
+	if mux == nil {
+		return errors.New("live: nil muxer")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.muxers[sessionID]; exists {
+		return fmt.Errorf("live: muxer for session %q already attached", sessionID)
+	}
+	r.muxers[sessionID] = mux
+	return nil
+}
+
+// DetachMuxer removes the muxer binding (e.g. on session close).
+// Idempotent. Does NOT call muxer.Close() — that's the caller's
+// responsibility because muxer lifetime may extend beyond routing.
+func (r *LiveRouter) DetachMuxer(sessionID string) {
+	r.mu.Lock()
+	delete(r.muxers, sessionID)
+	r.mu.Unlock()
+}
+
+func (r *LiveRouter) muxer(id string) (*HLSMuxer, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m, ok := r.muxers[id]
+	return m, ok
 }
 
 // AttachSession registers a live session so its playlist + segments
@@ -67,12 +117,44 @@ func (r *LiveRouter) ActiveSessionIDs() []string {
 }
 
 // Register wires the live HTTP routes into the supplied registrar.
+//
+// Two coexisting serving surfaces:
+//
+//	/live/{id}/hls/{file}  — gohlslib muxer output. Whatever file
+//	   gohlslib's internal registerPath emitted (index.m3u8 master,
+//	   <streamID>_stream.m3u8 media playlist, <prefix>_<streamID>_init.mp4,
+//	   seg/part .mp4/.ts). Player fetches /hls/index.m3u8 first and
+//	   follows chained URIs — all resolve under this prefix.
+//
+//	/live/{id}/playlist.m3u8 + /init.mp4 + /segment/{n}[/part/{p}]
+//	   — legacy hand-rolled CMAF path backed by LivePinSink. Retained
+//	   for backwards-compat during rollout; new clients SHOULD prefer
+//	   /hls/*. Will be removed once all viewers migrate.
+//
+//	/live/{id}/manifest.json — VOD Merkle manifest, sink-backed. Only
+//	   available post-Finalize. Independent of serving surface choice.
 func (r *LiveRouter) Register(reg HandlerRegistrar) {
+	reg.HandleFunc("GET /live/{sessionID}/hls/{file}", r.serveHLS)
 	reg.HandleFunc("GET /live/{sessionID}/playlist.m3u8", r.servePlaylist)
 	reg.HandleFunc("GET /live/{sessionID}/init.mp4", r.serveInit)
 	reg.HandleFunc("GET /live/{sessionID}/segment/{n}", r.serveSegment)
 	reg.HandleFunc("GET /live/{sessionID}/segment/{n}/part/{p}", r.servePart)
 	reg.HandleFunc("GET /live/{sessionID}/manifest.json", r.serveManifest)
+}
+
+// serveHLS delegates the request to the session's gohlslib HLSMuxer.
+// gohlslib's server uses filepath.Base on the URL — so {file} is passed
+// through unchanged. The handler needs the raw request because the
+// muxer inspects headers (e.g. _HLS_msn/_HLS_part LL-HLS blocking
+// preload hints) that a rewrite would strip.
+func (r *LiveRouter) serveHLS(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("sessionID")
+	mux, ok := r.muxer(id)
+	if !ok {
+		http.Error(w, "live: no muxer for session", http.StatusNotFound)
+		return
+	}
+	mux.Handler().ServeHTTP(w, req)
 }
 
 func (r *LiveRouter) sink(id string) (*LivePinSink, bool) {

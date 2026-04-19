@@ -34,6 +34,43 @@ type FrameSink interface {
 	OnAudioFrame(f AudioFrame)
 }
 
+// TeeFrameSink fans out every VideoFrame / AudioFrame to N underlying
+// sinks in registration order. Use when one logical ingest feeds
+// multiple independent consumers — e.g. gohlslib HLSMuxer (HTTP HLS
+// serving) running alongside LivePinSink+CMAFSegmenter (Merkle-leaf
+// accumulation for VOD manifest).
+//
+// The tee holds no state beyond the sink list; each sink owns its
+// own backpressure and error handling. A panicking sink will take the
+// whole RTP pump down — sinks are expected to swallow their own errors.
+type TeeFrameSink struct {
+	sinks []FrameSink
+}
+
+// NewTeeFrameSink constructs a tee from the given sinks. nil entries
+// are filtered out so callers can conditionally compose the list.
+func NewTeeFrameSink(sinks ...FrameSink) *TeeFrameSink {
+	live := make([]FrameSink, 0, len(sinks))
+	for _, s := range sinks {
+		if s != nil {
+			live = append(live, s)
+		}
+	}
+	return &TeeFrameSink{sinks: live}
+}
+
+func (t *TeeFrameSink) OnVideoFrame(f VideoFrame) {
+	for _, s := range t.sinks {
+		s.OnVideoFrame(f)
+	}
+}
+
+func (t *TeeFrameSink) OnAudioFrame(f AudioFrame) {
+	for _, s := range t.sinks {
+		s.OnAudioFrame(f)
+	}
+}
+
 // ReadTrack pumps RTP off a pion TrackRemote, depacketizes to H.264 or
 // Opus, and forwards each frame to the sink. Returns when the track
 // signals EOF (creator disconnected).
