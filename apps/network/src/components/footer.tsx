@@ -12,7 +12,7 @@ export function Footer({ locale, dict }: { locale: Locale; dict: Dictionary }) {
   const f = dict.common.footer;
   return (
     <footer className="border-t border-outline-variant/40 bg-background">
-      <div className="mx-auto grid max-w-[1440px] grid-cols-4 gap-12 px-12 pt-24 pb-12">
+      <div className="mx-auto grid max-w-[1440px] grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-12 px-6 md:px-12 pt-16 md:pt-24 pb-12">
         <div className="flex flex-col gap-3 font-label text-sm">
           <span className="text-tertiary">{f.siteHeading}</span>
           <Link

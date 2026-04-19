@@ -32,16 +32,16 @@ export function Nav({
 
   return (
     <header className="sticky top-0 z-10 border-b border-outline-variant/40 bg-background/80 backdrop-blur">
-      <nav className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between px-12">
+      <nav className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between gap-4 px-6 md:px-12">
         <Link
           href={localePath(locale)}
-          className="flex items-center gap-2 font-headline text-lg tracking-tight"
+          className="flex items-center gap-2 font-headline text-base md:text-lg tracking-tight shrink-0"
         >
           <span>aevia.network</span>
           <MeshDot />
         </Link>
 
-        <ul className="flex items-center gap-8 font-label text-sm">
+        <ul className="hidden lg:flex items-center gap-6 xl:gap-8 font-label text-sm">
           {items.map((item) => {
             const isActive = item.slug === active;
             return (
@@ -61,7 +61,7 @@ export function Nav({
           })}
         </ul>
 
-        <div className="flex items-center gap-6 font-label text-sm">
+        <div className="flex items-center gap-3 md:gap-6 font-label text-sm shrink-0">
           <div className="flex items-center gap-2">
             <Link
               href={enPath}
@@ -88,12 +88,38 @@ export function Nav({
 
           <a
             href="https://aevia.video"
-            className="flex items-center gap-1 text-on-surface-variant transition-colors hover:text-accent"
+            className="hidden md:flex items-center gap-1 text-on-surface-variant transition-colors hover:text-accent"
           >
             {dict.common.nav.externalVideo}
             <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
           </a>
         </div>
+      </nav>
+
+      {/* Mobile/tablet secondary nav row — horizontal scroll for page links */}
+      <nav
+        className="lg:hidden border-t border-outline-variant/40"
+        aria-label="page navigation"
+      >
+        <ul className="mx-auto flex max-w-[1440px] items-center gap-5 overflow-x-auto px-6 py-3 font-label text-sm">
+          {items.map((item) => {
+            const isActive = item.slug === active;
+            return (
+              <li key={item.slug} className="shrink-0">
+                <Link
+                  href={localePath(locale, `/${item.slug}`)}
+                  className={
+                    isActive
+                      ? 'border-b-2 border-primary pb-1 text-accent'
+                      : 'text-on-surface-variant transition-colors hover:text-accent'
+                  }
+                >
+                  {item.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
     </header>
   );

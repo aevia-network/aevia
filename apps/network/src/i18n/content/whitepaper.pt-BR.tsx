@@ -27,7 +27,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s1-introduction" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§1</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Introdução
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -84,7 +84,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s2-content-addressing" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§2</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Endereçamento de Conteúdo
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -133,7 +133,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s3-signed-manifests" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§3</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Manifestos Assinados
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -201,7 +201,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s4-content-registry" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§4</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Content Registry
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -258,7 +258,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s5-persistence-pool" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§5</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Persistence Pool
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -348,7 +348,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s6-network-layer" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§6</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Camada de Rede
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -393,7 +393,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s7-inference-layer" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§7</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Camada de Inferência
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -546,7 +546,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s8-risk-score" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§8</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Risk Score
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -625,7 +625,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s9-governance" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§9</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Governança
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -672,7 +672,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s10-privacy-model" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§10</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Modelo de Privacidade
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -721,7 +721,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s11-adversarial-analysis" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§11</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Análise Adversarial
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -788,7 +788,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s12-simplified-verification" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§12</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Verificação Simplificada
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -846,7 +846,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s13-economic-model" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§13</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Modelo Econômico
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -915,7 +915,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s14-related-work" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§14</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Trabalhos Relacionados
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
@@ -969,7 +969,7 @@ export function WhitepaperBody(): ReactNode {
 
       <section id="s15-conclusion" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§15</span>
-        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+        <h2 className="mt-2 font-headline text-3xl md:text-5xl font-bold leading-tight tracking-tight">
           Conclusão
         </h2>
         <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
