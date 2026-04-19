@@ -84,6 +84,15 @@ export interface WhepMetrics {
 export interface WhepOptions {
   whepUrl: string;
   iceServers?: RTCIceServer[];
+  /**
+   * Overrides the default ICE transport policy. Pass `'relay'` to force
+   * every candidate through TURN — useful as a stability band-aid on
+   * networks where peer-reflexive + host pairs prove fragile (mobile 4G,
+   * CGNAT, symmetric NAT). Pass `'all'` to allow direct-first with TURN
+   * fallback. Default is `'all'` to preserve latency on healthy paths;
+   * callers that know they're on a hostile network should override.
+   */
+  iceTransportPolicy?: RTCIceTransportPolicy;
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
   onTrack?: (event: RTCTrackEvent) => void;
   /**
@@ -112,6 +121,7 @@ export async function playWhep(opts: WhepOptions): Promise<WhepSession> {
 
   const pc = new RTCPeerConnection({
     iceServers: opts.iceServers ?? DEFAULT_ICE_SERVERS,
+    iceTransportPolicy: opts.iceTransportPolicy ?? 'all',
     bundlePolicy: 'max-bundle',
   });
 

@@ -240,31 +240,29 @@ export function playWhepWithFailover(opts: FailoverOptions): FailoverHandle {
 
 /**
  * Waits for either the `isBroken` predicate to return true (stream
- * disconnected, ICE failed, etc.) OR for `silenceTimeoutMs` of no
- * state change. Returns once either condition hits.
+ * failed/closed, caller stopped, etc.) or for stop() to be called.
+ * Returns once either condition hits.
  *
- * Used post-connected: we don't need a tight poll, just a cheap
- * every-500ms check. The caller's `isBroken` is checked before
- * every sleep so ICE-state-change callbacks surface quickly.
+ * Post-connected behaviour: we rely entirely on onConnectionStateChange
+ * to raise `isBroken()`. There is no wall-clock safety net here —
+ * a previous version had a `silenceTimeoutMs * 4` fallback that was
+ * removed after it was found to tear down perfectly healthy live
+ * sessions once they ran past ~32s, producing the exact
+ * "nenhum dos N provedores conseguiu servir a live" false-positive
+ * we were trying to avoid. The guard we actually want is "no RTP
+ * packets arrived" which requires getStats polling; that's a future
+ * refinement. Until then, a truly dead connection manifests either
+ * as `failed` / `closed` via onConnectionStateChange, or the caller
+ * bails via stop(). Both are already handled correctly.
  */
 function waitUntilBrokenOrSilent(
   isBroken: () => boolean,
   isStopped: () => boolean,
-  silenceTimeoutMs: number,
+  _silenceTimeoutMs: number,
 ): Promise<void> {
   return new Promise((resolve) => {
-    const start = Date.now();
     const check = setInterval(() => {
       if (isStopped() || isBroken()) {
-        clearInterval(check);
-        resolve();
-        return;
-      }
-      if (Date.now() - start > silenceTimeoutMs * 4) {
-        // The silence timeout is a safety net — in practice
-        // onConnectionStateChange fires well before this. We pick
-        // 4× the configured window to avoid false failovers on a
-        // viable but quiet stream (e.g. paused creator).
         clearInterval(check);
         resolve();
         return;
