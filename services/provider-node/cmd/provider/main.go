@@ -32,6 +32,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/mesh"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/mirror"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
@@ -177,6 +178,25 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	liveRouter := whip.NewLiveRouter()
 	whipLog := logger.With().Str("component", "whip").Logger()
 
+	// Fase 3.1 mesh wiring. Every live session this provider hosts
+	// joins the `aevia-live-{sessionID}` GossipSub topic so browser
+	// viewers that dial this provider via WSS see the provider's
+	// subscription and register it in their topic-peer count. Without
+	// this, the viewer-side chip reads "0 na sala" regardless of how
+	// many viewers connected — prod regression 2026-04-19.
+	meshSvc, err := mesh.New(ctx, n.Host())
+	if err != nil {
+		return err
+	}
+	// Note: NewGossipSub register its /meshsub/* stream handlers
+	// synchronously here. go-libp2p's identify service observes
+	// EvtLocalProtocolsUpdated and pushes updated protocol lists
+	// to connected peers automatically. Go clients (meshdebug)
+	// confirmed seeing meshsub on initial identify via this path.
+	// A browser-side equivalent race (js-libp2p gossipsub registrar
+	// not re-promoting connections after protocols arrive via push)
+	// is tracked separately — it's a client-side fix, not server.
+
 	httpxOpts := []httpx.ServerOption{
 		httpx.WithActiveSessionCounter(whipSrv),
 	}
@@ -224,6 +244,22 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		return err
 	}
 	mirrorSrv.OnSession = func(sess *whip.Session) {
+		// Fase 3.1 mesh wiring for mirror path. Subscribes THIS node's
+		// GossipSub instance to the session's topic so WSS-connected
+		// browsers that dial here (via DHT-resolved fan-out) see the
+		// provider as a topic peer. Must happen here, not via a
+		// whipSrv.InjectSession hook, because mirrorSrv.Start() begins
+		// accepting inbound libp2p streams BEFORE the main init flow
+		// finishes wiring anything registered against whipSrv — the
+		// mirrorSrv.OnSession callback, by contrast, is assigned on
+		// this very struct BEFORE Start() is called, so there's no
+		// race window. Origin path uses whipSrv.OnSession separately.
+		if err := meshSvc.JoinSession(sess.ID); err != nil {
+			mirrorLog.Warn().Err(err).Str("event", "mirror_mesh_join_failed").Str("session_id", sess.ID).Msg("mesh topic join failed on mirror")
+		} else {
+			mirrorLog.Info().Str("event", "mirror_mesh_joined").Str("session_id", sess.ID).Msg("mirror subscribed to session topic")
+		}
+
 		// Mirror got a fan-out stream from an origin. Announce the
 		// sessionCID so viewers doing /dht/resolve can discover that
 		// THIS node also serves the stream — same CID, different peerID.
@@ -243,6 +279,11 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		}()
 	}
 	mirrorSrv.OnClose = func(sessionID string, m *mirror.HopMetrics) {
+		// Symmetric to mirror_mesh_joined — release the topic so the
+		// provider stops gossiping subscriptions for dead sessions.
+		if err := meshSvc.LeaveSession(sessionID); err != nil {
+			mirrorLog.Warn().Err(err).Str("event", "mirror_mesh_leave_failed").Str("session_id", sessionID).Msg("mesh topic leave failed on mirror")
+		}
 		mirrorLog.Info().
 			Str("event", "mirror_session_stats").
 			Str("session_id", sessionID).
@@ -336,6 +377,13 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		if err := liveRouter.AttachSession(sess.ID, sink); err != nil {
 			whipLog.Error().Err(err).Str("event", "live_router_attach_failed").Str("session_id", sess.ID).Msg("live router attach failed")
 			return
+		}
+		if err := meshSvc.JoinSession(sess.ID); err != nil {
+			// Non-fatal — live stream still serves WHEP/HLS. Only the
+			// viewer-side P2P chip loses its "N na sala" count.
+			whipLog.Warn().Err(err).Str("event", "origin_mesh_join_failed").Str("session_id", sess.ID).Msg("mesh topic join failed")
+		} else {
+			whipLog.Info().Str("event", "origin_mesh_joined").Str("session_id", sess.ID).Msg("origin subscribed to session topic")
 		}
 		sess.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 			// Build a per-codec fan-out hub so WHEP viewers attach to
@@ -658,4 +706,3 @@ func parseMirrorPeers(raw string) ([]peer.ID, []error) {
 	}
 	return peers, errs
 }
-
