@@ -32,6 +32,7 @@ import (
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/httpx"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/identity"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/logging"
+	"github.com/Leeaandrob/aevia/services/provider-node/internal/mesh"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/mirror"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/node"
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/pinning"
@@ -176,6 +177,17 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 	}
 	liveRouter := whip.NewLiveRouter()
 	whipLog := logger.With().Str("component", "whip").Logger()
+
+	// Fase 3.1 mesh wiring. Every live session this provider hosts
+	// joins the `aevia-live-{sessionID}` GossipSub topic so browser
+	// viewers that dial this provider via WSS see the provider's
+	// subscription and register it in their topic-peer count. Without
+	// this, the viewer-side chip reads "0 na sala" regardless of how
+	// many viewers connected — prod regression 2026-04-19.
+	meshSvc, err := mesh.New(ctx, n.Host())
+	if err != nil {
+		return err
+	}
 
 	httpxOpts := []httpx.ServerOption{
 		httpx.WithActiveSessionCounter(whipSrv),
@@ -336,6 +348,11 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		if err := liveRouter.AttachSession(sess.ID, sink); err != nil {
 			whipLog.Error().Err(err).Str("event", "live_router_attach_failed").Str("session_id", sess.ID).Msg("live router attach failed")
 			return
+		}
+		if err := meshSvc.JoinSession(sess.ID); err != nil {
+			// Non-fatal — live stream still serves WHEP/HLS. Only the
+			// viewer-side P2P chip loses its "N na sala" count.
+			whipLog.Warn().Err(err).Str("event", "live_mesh_join_failed").Str("session_id", sess.ID).Msg("mesh topic join failed")
 		}
 		sess.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 			// Build a per-codec fan-out hub so WHEP viewers attach to
