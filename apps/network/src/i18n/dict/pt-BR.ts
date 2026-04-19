@@ -6,6 +6,7 @@ export const ptBR = {
       aup: 'aup',
       roadmap: 'roadmap',
       manifesto: 'manifesto',
+      faq: 'faq',
       externalVideo: 'aevia.video',
     },
     footer: {
