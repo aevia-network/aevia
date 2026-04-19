@@ -5,6 +5,8 @@ import { MeshDot } from '@aevia/ui';
 import { ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
 
+import { MobileMenu } from './mobile-menu';
+
 export type NavSlug = 'whitepaper' | 'spec' | 'aup' | 'roadmap' | 'manifesto' | 'faq';
 
 export function Nav({
@@ -61,7 +63,7 @@ export function Nav({
           })}
         </ul>
 
-        <div className="flex items-center gap-3 md:gap-6 font-label text-sm shrink-0">
+        <div className="hidden lg:flex items-center gap-6 font-label text-sm shrink-0">
           <div className="flex items-center gap-2">
             <Link
               href={enPath}
@@ -88,38 +90,23 @@ export function Nav({
 
           <a
             href="https://aevia.video"
-            className="hidden md:flex items-center gap-1 text-on-surface-variant transition-colors hover:text-accent"
+            className="flex items-center gap-1 text-on-surface-variant transition-colors hover:text-accent"
           >
             {dict.common.nav.externalVideo}
             <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
           </a>
         </div>
-      </nav>
 
-      {/* Mobile/tablet secondary nav row — wraps onto multiple lines if needed */}
-      <nav
-        className="lg:hidden border-t border-outline-variant/40"
-        aria-label="page navigation"
-      >
-        <ul className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 px-6 py-3 font-label text-sm">
-          {items.map((item) => {
-            const isActive = item.slug === active;
-            return (
-              <li key={item.slug}>
-                <Link
-                  href={localePath(locale, `/${item.slug}`)}
-                  className={
-                    isActive
-                      ? 'border-b-2 border-primary pb-1 text-accent'
-                      : 'text-on-surface-variant transition-colors hover:text-accent'
-                  }
-                >
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <MobileMenu
+          active={active}
+          locale={locale}
+          items={items}
+          externalVideoLabel={dict.common.nav.externalVideo}
+          ptPath={ptPath}
+          enPath={enPath}
+          openLabel={dict.common.nav.menuOpen}
+          closeLabel={dict.common.nav.menuClose}
+        />
       </nav>
     </header>
   );

@@ -12,6 +12,8 @@ export const en: Dictionary = {
       manifesto: 'manifesto',
       faq: 'faq',
       externalVideo: 'aevia.video',
+      menuOpen: 'open menu',
+      menuClose: 'close menu',
     },
     footer: {
       siteHeading: 'site',

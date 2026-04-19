@@ -8,6 +8,8 @@ export const ptBR = {
       manifesto: 'manifesto',
       faq: 'faq',
       externalVideo: 'aevia.video',
+      menuOpen: 'abrir menu',
+      menuClose: 'fechar menu',
     },
     footer: {
       siteHeading: 'site',
