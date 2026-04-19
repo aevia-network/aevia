@@ -1,3 +1,4 @@
+import { StructuredData } from '@/components/structured-data';
 import { isLocale } from '@/i18n/config';
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Inter, Sora } from 'next/font/google';
@@ -39,12 +40,59 @@ export const metadata: Metadata = {
     template: '%s · aevia.network',
   },
   description:
-    'Protocol home for Aevia. Persistence does not imply distribution. Whitepaper, RFC specification, AUP, roadmap, manifesto.',
+    'Aevia — sovereign video protocol. Persistence does not imply distribution. Whitepaper, RFC specification, AUP, roadmap, manifesto, FAQ.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://aevia.network'),
   applicationName: 'aevia.network',
+  authors: [{ name: 'Leandro Barbosa', url: 'https://github.com/Leeaandrob' }],
+  creator: 'Aevia LLC',
+  publisher: 'Aevia LLC',
+  keywords: [
+    'sovereign video',
+    'video protocol',
+    'libp2p',
+    'decentralized streaming',
+    'base l2',
+    'usdc',
+    'proof of relay',
+    'persistence pool',
+    'content addressing',
+    'cidv1',
+    'whip',
+    'whep',
+    'll-hls',
+    'cloudflare alternative',
+    'youtube alternative',
+    'creator economy',
+    'censorship resistance',
+  ],
   icons: {
     icon: '/icon.svg',
     shortcut: '/favicon.svg',
+    apple: '/apple-icon',
+  },
+  openGraph: {
+    type: 'website',
+    siteName: 'aevia.network',
+    title: 'aevia.network — sovereign video protocol',
+    description:
+      'Sovereign video protocol. Persistence does not imply distribution. Open spec, non-custodial USDC settlement on Base L2, libp2p provider-node mesh.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'aevia.network — sovereign video protocol',
+    description:
+      'Sovereign video protocol. Persistence does not imply distribution.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
   },
 };
 
@@ -68,6 +116,7 @@ export default async function LocaleLayout({
   if (!isLocale(locale)) notFound();
 
   const cfToken = process.env.NEXT_PUBLIC_CLOUDFLARE_ANALYTICS_TOKEN;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://aevia.network';
 
   return (
     <html
@@ -75,6 +124,7 @@ export default async function LocaleLayout({
       className={`${sora.variable} ${inter.variable} ${geist.variable} ${geistMono.variable}`}
     >
       <body className="min-h-screen bg-background font-body text-accent antialiased">
+        <StructuredData baseUrl={baseUrl} />
         {children}
         {cfToken ? (
           <script
