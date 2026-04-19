@@ -15,12 +15,13 @@ import {
   useWallets,
 } from '@aevia/auth/client';
 import { PermanenceStrip } from '@aevia/ui';
-import { Anchor, Check, Loader2, Pencil, Play, Radio, Trash2, X } from 'lucide-react';
+import { Anchor, Check, Loader2, Pencil, Play, Radio, Trash2, Tv2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { http, createPublicClient, encodeFunctionData, keccak256 as viemKeccak256 } from 'viem';
 import { deleteLiveAction, renameLiveAction } from '../actions';
+import { ObsBroadcastPanel } from './obs-broadcast-panel';
 
 export interface LiveRowData {
   uid: string;
@@ -47,6 +48,7 @@ type SponsorshipState = { kind: 'available' } | { kind: 'exhausted'; limit: numb
 
 export function LiveRow({ live }: { live: LiveRowData }) {
   const [editing, setEditing] = useState(false);
+  const [obsPanelOpen, setObsPanelOpen] = useState(false);
   const [draft, setDraft] = useState(live.name);
   const inputRef = useRef<HTMLInputElement>(null);
   const createdLabel = formatDateTimePtBR(live.created);
@@ -434,6 +436,18 @@ export function LiveRow({ live }: { live: LiveRowData }) {
 
         {/* Right-aligned secondary actions */}
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setObsPanelOpen((v) => !v)}
+            className={`rounded-full p-2 transition-colors hover:bg-surface-high ${
+              obsPanelOpen ? 'text-primary' : 'text-on-surface/60 hover:text-on-surface'
+            }`}
+            aria-label="transmitir via obs"
+            aria-expanded={obsPanelOpen}
+            title="transmitir via obs / ferramenta externa"
+          >
+            <Tv2 className="size-4" aria-hidden />
+          </button>
           <Link
             href={`/live/${live.uid}`}
             className="rounded-full p-2 text-on-surface/60 transition-colors hover:bg-surface-high hover:text-on-surface"
@@ -455,6 +469,8 @@ export function LiveRow({ live }: { live: LiveRowData }) {
           </form>
         </div>
       </div>
+
+      {obsPanelOpen ? <ObsBroadcastPanel liveUid={live.uid} /> : null}
 
       {/* On-chain row: terminal-style anchor chip OR register CTAs */}
       {registerState.kind === 'success' && (

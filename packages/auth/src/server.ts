@@ -269,3 +269,9 @@ export async function verifyBearerToken(token: string): Promise<AeviaSession | n
 
   return null;
 }
+
+export {
+  mintPublisherToken,
+  verifyPublisherToken,
+  type PublisherTokenClaims,
+} from './publisher-token';

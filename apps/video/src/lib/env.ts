@@ -10,6 +10,14 @@ const serverSchema = z.object({
   STREAM_WEBHOOK_SECRET: z.string().optional(),
   NEXT_PUBLIC_PRIVY_APP_ID: z.string().min(1, 'NEXT_PUBLIC_PRIVY_APP_ID required'),
   PRIVY_APP_SECRET: z.string().min(1, 'PRIVY_APP_SECRET required'),
+  // HS256 signing secret for publisher tokens (OBS / external WHIP tools).
+  // Min 32 chars enforced by `mintPublisherToken` itself; documented in
+  // SETUP.md. Generate via `openssl rand -base64 48`. Rotation invalidates
+  // all in-flight publisher tokens — fine, they're 30-min TTL anyway.
+  AEVIA_PUBLISHER_TOKEN_SECRET: z
+    .string()
+    .min(32, 'AEVIA_PUBLISHER_TOKEN_SECRET must be >= 32 chars')
+    .optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
