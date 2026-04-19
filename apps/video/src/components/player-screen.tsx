@@ -171,7 +171,16 @@ export function PlayerScreen(props: PlayerScreenProps) {
   // WHEP preference: aevia mesh first (our own SFU, zero Cloudflare),
   // Cloudflare Stream WHEP as the legacy fallback. The HLS.js effect
   // below takes over when both WHEP URLs are unset or WHEP fails.
-  const effectiveWhepUrl = props.aeviaWhepUrl ?? (props.whepUrl || null);
+  //
+  // ?hls=1 force-overrides: bypasses WHEP + failover entirely so the
+  // hls.js useEffect owns playback from mount. Use cases: QA +
+  // Playwright E2E that need chunk relay active (p2p-media-loader
+  // only binds on the HLS path), power-users on hostile networks who
+  // know WHEP will churn, debug sessions. Read once on mount —
+  // mid-session toggles have no effect so lifecycle stays predictable.
+  const forceHlsPath =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('hls') === '1';
+  const effectiveWhepUrl = forceHlsPath ? null : (props.aeviaWhepUrl ?? (props.whepUrl || null));
 
   const startLive = useCallback(async () => {
     const debugLog =
@@ -276,8 +285,12 @@ export function PlayerScreen(props: PlayerScreenProps) {
     // When WHEP is available (either aevia-mesh SFU or Cloudflare),
     // startLive drives playback. The HLS.js effect below only kicks in
     // when WHEP isn't available OR fails — it checks effectiveWhepUrl.
+    // Failover orchestrator is WHEP-based; when ?hls=1 forces HLS,
+    // skip failover entirely so the hls.js useEffect owns playback.
     const hasFailover =
-      (props.aeviaFailoverCandidates?.length ?? 0) > 0 && Boolean(props.aeviaSessionId);
+      !forceHlsPath &&
+      (props.aeviaFailoverCandidates?.length ?? 0) > 0 &&
+      Boolean(props.aeviaSessionId);
     if (effectiveWhepUrl || hasFailover) {
       void startLive();
       return () => {
@@ -329,7 +342,19 @@ export function PlayerScreen(props: PlayerScreenProps) {
     setLiveStatus('connecting');
     setLiveError(null);
 
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    // When ?p2p=1 is set we intentionally skip the native HLS path
+    // (video.src = m3u8 on Safari/Chromium) and force hls.js. Reason:
+    // p2p-media-loader binds via hls.js's custom fragment loader API,
+    // which the native player doesn't expose. Without this override
+    // Chromium would pick native HLS and `wireChunkRelay` would run
+    // but see no fragment-load traffic to route. Fall through to the
+    // hls.js block below when p2p is on + hls.js is supported.
+    const p2pEnabled =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('p2p') === '1';
+    const preferNative = !(p2pEnabled && Hls.isSupported());
+
+    if (preferNative && video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = props.aeviaHlsUrl;
       const onCanPlay = () => {
         setLiveStatus('playing');
@@ -349,7 +374,11 @@ export function PlayerScreen(props: PlayerScreenProps) {
     }
 
     if (Hls.isSupported()) {
-      const hls = new Hls({
+      // Capture aeviaHlsUrl in a local const so the async IIFE below
+      // has a stable non-null reference that survives TS's lost
+      // narrowing across the await boundary.
+      const hlsUrl = props.aeviaHlsUrl;
+      const hlsConfig = {
         enableWorker: false,
         // Live tuning — keep the manifest fresh and the buffer small so
         // we chase the head of the playlist as the provider pins new
@@ -358,27 +387,36 @@ export function PlayerScreen(props: PlayerScreenProps) {
         liveMaxLatencyDurationCount: 6,
         manifestLoadingMaxRetry: 10,
         manifestLoadingRetryDelay: 1_500,
-      });
+      };
 
-      // Fase 3.2 — wire P2P chunk relay BEFORE loadSource, when the
-      // viewer opted in via ?p2p=1 and we have a sessionId to scope
-      // the swarm by. The wireChunkRelay call imports libp2p-free
-      // p2p-media-loader + attaches a custom fragment loader to
-      // hls.js; once active, HLS segments race between HTTP (origin
-      // provider) and WebRTC DataChannel (other viewers). Import is
-      // dynamic so the bundle only lands when opt-in hits.
-      let chunkRelayCleanup: (() => void) | undefined;
-      if (
-        typeof window !== 'undefined' &&
-        new URLSearchParams(window.location.search).get('p2p') === '1' &&
-        props.aeviaSessionId
-      ) {
-        void (async () => {
+      // Fase 3.2 chunk relay — requires ?p2p=1&chunks=1. Gating it
+      // behind a second flag keeps ?hls=1 debuggable standalone +
+      // lets us opt specific viewers into the P2P fragment loader
+      // without risking mediaError regressions for others.
+      const query =
+        typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const useChunkRelay =
+        query?.get('p2p') === '1' && query?.get('chunks') === '1' && Boolean(props.aeviaSessionId);
+
+      // Lifecycle orchestration: we need to dynamic-import p2p-media-loader
+      // when useChunkRelay — that's async. But useEffect callbacks can't be
+      // async themselves, so we spawn an IIFE and hand the cleanup a stable
+      // ref that the IIFE populates. cancelled guard protects against mount
+      // churn: if the effect unmounts before Hls is constructed, we destroy
+      // right after.
+      let cancelled = false;
+      let destroy: (() => void) | undefined;
+
+      void (async () => {
+        let hls: Hls;
+        let chunkRelayCleanup: (() => void) | undefined;
+        if (useChunkRelay) {
           try {
             const { wireChunkRelay } = await import('@/lib/p2p/chunk-relay');
+            if (cancelled) return;
             const handle = wireChunkRelay({
               sessionId: props.aeviaSessionId as string,
-              hls,
+              hlsConfig,
               onStats: (s) =>
                 setChunkRelayStats({
                   ratio: s.ratio,
@@ -387,29 +425,45 @@ export function PlayerScreen(props: PlayerScreenProps) {
                   bytesFromHttp: s.bytesFromHttp,
                 }),
             });
+            hls = handle.hls;
             chunkRelayCleanup = handle.stop;
           } catch (err) {
-            console.error('[p2p:chunk-relay] wire failed:', err);
+            console.error('[p2p:chunk-relay] wire failed, falling back:', err);
+            if (cancelled) return;
+            hls = new Hls(hlsConfig);
           }
-        })();
-      }
-
-      hls.loadSource(props.aeviaHlsUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setLiveStatus('playing');
-        video.play().catch(() => setAutoplayBlocked(true));
-      });
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          setLiveError(`mesh: ${data.type}`);
-          setLiveStatus('error');
+        } else {
+          hls = new Hls(hlsConfig);
         }
-      });
+
+        destroy = () => {
+          chunkRelayCleanup?.();
+          setChunkRelayStats(null);
+          hls.destroy();
+        };
+
+        if (cancelled) {
+          destroy();
+          return;
+        }
+
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setLiveStatus('playing');
+          video.play().catch(() => setAutoplayBlocked(true));
+        });
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            setLiveError(`mesh: ${data.type}`);
+            setLiveStatus('error');
+          }
+        });
+      })();
+
       return () => {
-        chunkRelayCleanup?.();
-        setChunkRelayStats(null);
-        hls.destroy();
+        cancelled = true;
+        destroy?.();
       };
     }
 

@@ -46,18 +46,24 @@
  * drive UI such as the PermanenceStrip L1 sage indicator.
  */
 
+import HlsCtor from 'hls.js';
 import type Hls from 'hls.js';
+import type { HlsConfig } from 'hls.js';
 import { HlsJsP2PEngine } from 'p2p-media-loader-hlsjs';
 
 export interface ChunkRelayOptions {
   /** Live/VOD session ID — used as a swarm discriminator so unrelated
    * lives don't accidentally cross-pollinate on the tracker. */
   sessionId: string;
-  /** The hls.js instance that is already configured for playback.
-   * Must NOT have had `loadSource()` called yet — the engine injects
-   * a custom fragment loader that only takes effect on subsequent
-   * manifest parses. */
-  hls: Hls;
+  /** Raw hls.js config (sans p2p) the caller would normally pass to
+   * `new Hls()`. We wrap it with `HlsJsP2PEngine.injectMixin()` — the
+   * only engine entry point that actually installs the P2P fragment
+   * loader class into hls.js at construction time. The plain
+   * `bindHls()` method alone is NOT enough: it attaches event
+   * listeners but leaves the default HTTP fragment loader in place,
+   * so `onChunkDownloaded` never fires and the P2P engine is dead
+   * weight. Learned the hard way during Fase 3.2 step 1 validation. */
+  hlsConfig: Partial<HlsConfig>;
   /** Fires whenever a chunk lands, with running P2P ratio stats. */
   onStats?: (stats: ChunkRelayStats) => void;
 }
@@ -77,35 +83,48 @@ export interface ChunkRelayStats {
 }
 
 export interface ChunkRelayHandle {
+  /** The P2P-wrapped hls.js instance, ready for `loadSource` +
+   * `attachMedia`. Use this exactly like a normal hls.js object —
+   * all standard events (MANIFEST_PARSED, ERROR, etc) work on it. */
+  hls: Hls;
   /** Snapshot — reads in-memory counters, cheap. */
   stats: () => ChunkRelayStats;
-  /** Shut down the P2P engine + detach from hls.js. Idempotent. */
+  /** Shut down the P2P engine + destroy the wrapped hls.js instance.
+   * Idempotent. */
   stop: () => void;
 }
 
 const PUBLIC_TRACKERS = ['wss://tracker.webtorrent.dev', 'wss://tracker.openwebtorrent.com'];
 
 /**
- * Wires p2p-media-loader into a hls.js instance. Call BEFORE
- * `hls.loadSource(url)` — the engine installs custom fragment +
- * playlist loaders via `getConfigForHlsJs()` that only activate on
- * the next manifest parse.
+ * Creates a hls.js instance wrapped with p2p-media-loader's fragment
+ * loader. Uses `HlsJsP2PEngine.injectMixin(Hls)` — the official
+ * entry point that BOTH wires the P2P events AND injects the custom
+ * fragment / playlist loaders at class construction. Replaces a
+ * plain `new Hls(config)` in the caller.
  */
 export function wireChunkRelay(opts: ChunkRelayOptions): ChunkRelayHandle {
-  const engine = new HlsJsP2PEngine({
-    core: {
-      swarmId: `aevia-${opts.sessionId}`,
-      announceTrackers: PUBLIC_TRACKERS,
-      // Live-tuned timeouts: prefer HTTP when P2P hasn't delivered
-      // within 1.5s, but don't give up on a live tail segment too
-      // early. VOD could afford 4s+ but live budget is tighter.
-      simultaneousHttpDownloads: 3,
-      simultaneousP2PDownloads: 3,
-      httpNotReceivingBytesTimeoutMs: 6_000,
+  // Mix the P2P engine into Hls.js. Returns an Hls subclass whose
+  // constructor accepts the standard HlsConfig plus a `p2p` option.
+  const HlsWithP2P = HlsJsP2PEngine.injectMixin(HlsCtor);
+
+  const hls = new HlsWithP2P({
+    ...opts.hlsConfig,
+    p2p: {
+      core: {
+        swarmId: `aevia-${opts.sessionId}`,
+        announceTrackers: PUBLIC_TRACKERS,
+        // Live-tuned timeouts: prefer HTTP when P2P hasn't delivered
+        // within 1.5s, but don't give up on a live tail segment too
+        // early. VOD could afford 4s+ but live budget is tighter.
+        simultaneousHttpDownloads: 3,
+        simultaneousP2PDownloads: 3,
+        httpNotReceivingBytesTimeoutMs: 6_000,
+      },
     },
   });
 
-  engine.bindHls(opts.hls);
+  const engine = hls.p2pEngine;
 
   const counters: ChunkRelayStats = {
     bytesFromPeers: 0,
@@ -147,12 +166,13 @@ export function wireChunkRelay(opts: ChunkRelayOptions): ChunkRelayHandle {
   });
 
   return {
+    hls: hls as unknown as Hls,
     stats: () => ({ ...counters }),
     stop: () => {
       try {
-        engine.destroy();
+        hls.destroy();
       } catch {
-        // Idempotent; nothing to do on double-destroy.
+        // hls.destroy also tears down the p2pEngine. Idempotent.
       }
     },
   };
