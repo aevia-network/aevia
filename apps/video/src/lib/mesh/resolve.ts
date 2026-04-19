@@ -121,6 +121,70 @@ export async function resolveSessionProvider(
   return null;
 }
 
+/**
+ * Plural variant — returns ALL providers the DHT knows about for this
+ * session, in the order the responding relay listed them. Required by
+ * Fase 2.3 viewer failover: when the active WHEP stream breaks, the
+ * player walks the list and tries the next candidate instead of
+ * giving up. The single-result helper is a thin wrapper around this
+ * one for callers who only need one.
+ *
+ * Deduplicates by peerId so overlapping provider sets from multiple
+ * relays don't produce duplicate entries.
+ */
+export async function resolveSessionProviders(
+  sessionId: string,
+  opts: ResolveOptions,
+): Promise<ResolvedProvider[]> {
+  if (opts.relayUrls.length === 0) return [];
+
+  const cid = await sessionIdToCid(sessionId);
+  const timeoutMs = opts.timeoutMs ?? 5_000;
+  const seen = new Set<string>();
+  const out: ResolvedProvider[] = [];
+
+  for (const relay of opts.relayUrls) {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), timeoutMs);
+      if (opts.signal) {
+        opts.signal.addEventListener('abort', () => ctl.abort(), { once: true });
+      }
+      const res = await fetch(`${stripTrailingSlash(relay)}/dht/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cid, limit: 10 }),
+        signal: ctl.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const body = (await res.json()) as {
+        providers?: Array<{ peer_id: string; multiaddrs?: string[] }>;
+      };
+      if (!body.providers) continue;
+      for (const p of body.providers) {
+        if (seen.has(p.peer_id)) continue;
+        const httpsBase = opts.peerRegistry[p.peer_id];
+        if (!httpsBase) continue;
+        seen.add(p.peer_id);
+        out.push({
+          peerId: p.peer_id,
+          httpsBase,
+          multiaddrs: p.multiaddrs ?? [],
+          resolvedVia: relay,
+        });
+      }
+      // If we got providers from this relay, stop — the DHT response
+      // IS the authoritative list. Walking more relays mixes stale
+      // data from a slow-to-update peer.
+      if (out.length > 0) return out;
+    } catch {
+      // Non-fatal — try next relay.
+    }
+  }
+  return out;
+}
+
 function stripTrailingSlash(s: string): string {
   return s.replace(/\/+$/, '');
 }

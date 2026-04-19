@@ -1,4 +1,7 @@
 import { PlayerScreen } from '@/components/player-screen';
+import { type ProviderMeta, rankProvidersByRegion } from '@/lib/mesh/rank';
+import { parseProviderRegistry, parseRelayList, resolveSessionProviders } from '@/lib/mesh/resolve';
+import type { FailoverCandidate } from '@/lib/webrtc/whep-failover';
 import { notFound } from 'next/navigation';
 
 export const runtime = 'edge';
@@ -7,14 +10,17 @@ export const revalidate = 0;
 
 /**
  * Aevia-mesh viewer. The sessionID in the URL is the WHIP session the
- * creator started on a provider-node (not a Cloudflare uid). The viewer
- * fetches the HLS playlist directly from the mesh — no Cloudflare round
- * trip, no central registry. Stream liveness is inferred client-side
- * from playlist availability (hls.js reloads the manifest continuously
- * while the session is open).
+ * creator started on a provider-node (not a Cloudflare uid).
  *
- * Creator identity and manifest CID land with Protocol Spec §3 (signed
- * manifests); for now we render anonymous metadata.
+ * Fase 2.3 viewer failover: before render we resolve the sessionCID via
+ * the DHT, producing a list of candidate providers (origin + mirrors).
+ * PlayerScreen plays from the top-ranked candidate and walks down the
+ * list when the active stream breaks — no page reload, no fatal error
+ * on a single provider outage.
+ *
+ * Without DHT envs configured the page falls back cleanly to the legacy
+ * single-URL path (NEXT_PUBLIC_AEVIA_MESH_URL), preserving current
+ * deployments.
  */
 export default async function MeshLiveViewerPage({
   params,
@@ -22,13 +28,47 @@ export default async function MeshLiveViewerPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const meshUrl = process.env.NEXT_PUBLIC_AEVIA_MESH_URL?.trim();
-  if (!meshUrl) {
-    // Mesh disabled in this deployment. Treat as 404 — viewer can't
-    // reach any provider-node, so there's nothing to render.
+
+  const fallbackBase = process.env.NEXT_PUBLIC_AEVIA_MESH_URL?.trim();
+  if (!fallbackBase) {
     notFound();
   }
-  const base = meshUrl.replace(/\/+$/, '');
+  const base = fallbackBase.replace(/\/+$/, '');
+
+  // Fase 2.3 — resolve candidate providers via DHT. Both envs must be
+  // set; otherwise failover is disabled and we fall back to the
+  // single-URL path (aeviaWhepUrl below).
+  const relays = parseRelayList(process.env.NEXT_PUBLIC_AEVIA_DHT_RELAYS ?? '');
+  const registry = parseProviderRegistry(process.env.NEXT_PUBLIC_AEVIA_PROVIDER_REGISTRY ?? '');
+
+  let failoverCandidates: FailoverCandidate[] = [];
+  if (relays.length > 0 && Object.keys(registry).length > 0) {
+    try {
+      const resolved = await resolveSessionProviders(id, {
+        relayUrls: relays,
+        peerRegistry: registry,
+        fallbackHttpsBase: base,
+        timeoutMs: 2_500,
+      });
+      // No viewer geo on the server. rank-by-region with empty hint
+      // produces a deterministic order based on original DHT listing;
+      // the client-side failover loop walks it top-down. Viewer geo
+      // hint (GeoIP, client coordinates) lands in Fase 2.3b.
+      const metas: ProviderMeta[] = resolved.map((p) => ({
+        peerId: p.peerId,
+        httpsBase: p.httpsBase,
+      }));
+      const ranked = rankProvidersByRegion(metas, {});
+      failoverCandidates = ranked.map((p) => ({
+        peerId: p.peerId,
+        httpsBase: p.httpsBase,
+      }));
+    } catch {
+      // Resolve failure = empty candidates = legacy single-URL path
+      // takes over. No error surfaced to the viewer — same UX as
+      // pre-2.3 deployments.
+    }
+  }
 
   return (
     <PlayerScreen
@@ -38,6 +78,8 @@ export default async function MeshLiveViewerPage({
       hlsUrl={null}
       aeviaHlsUrl={`${base}/live/${id}/playlist.m3u8`}
       aeviaWhepUrl={`${base}/whep/${id}`}
+      aeviaSessionId={id}
+      aeviaFailoverCandidates={failoverCandidates}
       vodProcessing={false}
       creatorDisplayName="aevia"
       creatorAddress={null}

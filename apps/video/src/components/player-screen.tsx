@@ -4,6 +4,12 @@ import { BottomNav } from '@/components/bottom-nav';
 import { explorerTxUrl } from '@/lib/chain';
 import { fetchIceServers } from '@/lib/webrtc/ice';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
+import {
+  type FailoverCandidate,
+  type FailoverHandle,
+  type FailoverState,
+  playWhepWithFailover,
+} from '@/lib/webrtc/whep-failover';
 import { PermanenceStrip, PresenceRow, ReactionStrip, VigilChip } from '@aevia/ui';
 import Hls from 'hls.js';
 import {
@@ -61,6 +67,23 @@ export interface PlayerScreenProps {
    * stays as a fallback in case WHEP handshake fails.
    */
   aeviaWhepUrl: string | null;
+  /**
+   * WHIP sessionID used to construct WHEP URLs on each candidate
+   * (Fase 2.3). Same across all candidates by DHT construction —
+   * peers announce the same sessionCID, so all `httpsBase/whep/{sessionId}`
+   * paths address the same live stream. Required when
+   * `aeviaFailoverCandidates` is non-empty.
+   */
+  aeviaSessionId?: string;
+  /**
+   * Ordered candidate list for cross-provider failover (Fase 2.3).
+   * Typically resolved server-side via `resolveSessionProviders` +
+   * ranked by `rankProvidersByRegion`. When non-empty, playback uses
+   * the failover orchestrator — falls through to next candidate when
+   * the active stream breaks. When empty, legacy single-URL path via
+   * `aeviaWhepUrl` wins (keeps existing deployments working).
+   */
+  aeviaFailoverCandidates?: FailoverCandidate[];
   vodProcessing?: boolean;
   creatorDisplayName: string;
   creatorAddress: `0x${string}` | null;
@@ -78,9 +101,16 @@ export function PlayerScreen(props: PlayerScreenProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const whepSessionRef = useRef<WhepSession | null>(null);
+  const failoverHandleRef = useRef<FailoverHandle | null>(null);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('idle');
   const [liveError, setLiveError] = useState<string | null>(null);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  // Failover telemetry (Fase 2.3). Exposed via refs so debug builds +
+  // future overlay UI can surface "reconectando de peer A → B". No
+  // render-driving usage yet; `_` prefix satisfies lint's unused-variable
+  // rule while keeping the names self-documenting at the call site.
+  const [_failoverState, setFailoverState] = useState<FailoverState>('idle');
+  const [_activePeerId, setActivePeerId] = useState<string | null>(null);
 
   const [vodStatus, setVodStatus] = useState<VodStatus>('idle');
   const [vodError, setVodError] = useState<string | null>(null);
@@ -91,20 +121,53 @@ export function PlayerScreen(props: PlayerScreenProps) {
   const effectiveWhepUrl = props.aeviaWhepUrl ?? (props.whepUrl || null);
 
   const startLive = useCallback(async () => {
+    const debugLog =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('debug') === '1';
+
+    // Fase 2.3 failover path. When page passed a non-empty candidate
+    // list AND sessionId, use the orchestrator — viewer re-routes
+    // automatically across providers when the active stream breaks.
+    // Otherwise fall back to the legacy single-URL playWhep call.
+    if (
+      props.aeviaFailoverCandidates &&
+      props.aeviaFailoverCandidates.length > 0 &&
+      props.aeviaSessionId
+    ) {
+      setLiveStatus('connecting');
+      setLiveError(null);
+      const handle = playWhepWithFailover({
+        sessionId: props.aeviaSessionId,
+        candidates: props.aeviaFailoverCandidates,
+        debugLog,
+        onStateChange: (state, ctx) => {
+          setFailoverState(state);
+          setActivePeerId(ctx.candidate?.peerId ?? null);
+          if (state === 'connecting' || state === 'failing-over') setLiveStatus('connecting');
+          if (state === 'connected') setLiveStatus('playing');
+          if (state === 'failed-all') {
+            setLiveStatus('error');
+            setLiveError(`nenhum dos ${ctx.totalAttempts} provedores conseguiu servir a live`);
+          }
+        },
+        onStream: (stream) => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(() => setAutoplayBlocked(true));
+          }
+        },
+      });
+      failoverHandleRef.current = handle;
+      return;
+    }
+
+    // Legacy single-URL path (current deployments pre-Fase 2.3).
     if (!effectiveWhepUrl) {
       return; // HLS-only path — the other effect drives playback.
     }
     setLiveStatus('connecting');
     setLiveError(null);
     try {
-      // Fase 2.1b consumption-latency instrumentation: enable with ?debug=1.
-      // When set, playWhep logs a timing breakdown to the browser console at
-      // two milestones — PC connected, and first decoded frame — so operators
-      // and devs can see the viewer-perceived latency without touching code.
-      const debugLog =
-        typeof window !== 'undefined' &&
-        new URLSearchParams(window.location.search).get('debug') === '1';
-
       // Fetch dynamic ICE servers (STUN + Cloudflare TURN credentials when
       // configured server-side). Without TURN, viewers on hostile mobile
       // networks (Vivo 4G CGNAT, corporate firewalls blocking UDP) silently
@@ -139,21 +202,27 @@ export function PlayerScreen(props: PlayerScreenProps) {
       setLiveError(err instanceof Error ? err.message : 'falha ao conectar');
       setLiveStatus('error');
     }
-  }, [effectiveWhepUrl]);
+  }, [effectiveWhepUrl, props.aeviaFailoverCandidates, props.aeviaSessionId]);
 
   useEffect(() => {
     if (mode !== 'live') return;
     // When WHEP is available (either aevia-mesh SFU or Cloudflare),
     // startLive drives playback. The HLS.js effect below only kicks in
     // when WHEP isn't available OR fails — it checks effectiveWhepUrl.
-    if (effectiveWhepUrl) {
+    const hasFailover =
+      (props.aeviaFailoverCandidates?.length ?? 0) > 0 && Boolean(props.aeviaSessionId);
+    if (effectiveWhepUrl || hasFailover) {
       void startLive();
       return () => {
+        // Stop both the legacy single-URL session and the failover
+        // handle — whichever was active. Both are idempotent.
         void whepSessionRef.current?.stop();
         whepSessionRef.current = null;
+        void failoverHandleRef.current?.stop();
+        failoverHandleRef.current = null;
       };
     }
-  }, [mode, startLive, effectiveWhepUrl]);
+  }, [mode, startLive, effectiveWhepUrl, props.aeviaFailoverCandidates, props.aeviaSessionId]);
 
   // Aevia-mesh live playback via hls.js — used as fallback when WHEP
   // isn't configured. Keeps the same <video> element WHEP uses so the
