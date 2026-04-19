@@ -303,9 +303,7 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
   }, []);
 
   const shareUrl = created
-    ? `${window.location.origin}${
-        created.backend === 'aevia-mesh' ? '/live/mesh/' : '/live/'
-      }${created.uid}`
+    ? `${window.location.origin}${liveRouteForBackend(created.backend)}${created.uid}`
     : null;
 
   const copyShareUrl = () => {
@@ -376,6 +374,28 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
       <BottomNav />
     </div>
   );
+}
+
+// ---- Routing helpers -----------------------------------------------------
+
+/**
+ * Map a backend name to its viewer-page URL prefix. Each backend has its own
+ * `/live/<backend>/[id]` segment because the underlying lookup APIs are
+ * different (Cloudflare Stream live_inputs vs Livepeer Studio streams vs
+ * aevia-mesh provider-node sessionIDs). We tried collapsing into one
+ * `/live/[id]` route with a UID prefix dispatcher; the `:` separator got
+ * URL-encoded inconsistently between the browser and next-on-pages, so
+ * Livepeer pages 404'd in production. Per-backend segments side-step that.
+ */
+function liveRouteForBackend(backend: LiveBackend): string {
+  switch (backend) {
+    case 'aevia-mesh':
+      return '/live/mesh/';
+    case 'livepeer':
+      return '/live/livepeer/';
+    default:
+      return '/live/';
+  }
 }
 
 // ---- Top chrome ----------------------------------------------------------

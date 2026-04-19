@@ -6,68 +6,14 @@ import {
   updateVideo,
 } from '@/lib/cloudflare/stream-client';
 import type { StreamVideo } from '@/lib/cloudflare/types';
-import {
-  getLivepeerStream,
-  livepeerPlaybackUrl,
-  livepeerPlayerUrl,
-} from '@/lib/livepeer/stream-client';
 import { shortAddress } from '@aevia/auth';
 import { notFound } from 'next/navigation';
 
 export const runtime = 'edge';
 
-const LIVEPEER_PREFIX = 'lp:';
-
 export default async function LiveViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // Backend dispatch: Cloudflare lives are naked UIDs; Livepeer streams are
-  // prefixed with `lp:` at creation time (see /api/lives/route.ts). The
-  // prefix lets us keep one URL space (`/live/[id]`) for both backends
-  // without introducing a third path or a separate route segment.
-  if (id.startsWith(LIVEPEER_PREFIX)) {
-    return renderLivepeer(id.slice(LIVEPEER_PREFIX.length));
-  }
-  return renderCloudflare(id);
-}
-
-async function renderLivepeer(streamId: string) {
-  const stream = await getLivepeerStream(streamId);
-  if (!stream) notFound();
-
-  const creatorAddress = (stream as { userTags?: Record<string, string> }).userTags
-    ?.creatorAddress as `0x${string}` | undefined;
-  const creatorDid = (stream as { userTags?: Record<string, string> }).userTags?.creatorDid;
-  const isActive = (stream as { isActive?: boolean }).isActive ?? false;
-
-  // Livepeer doesn't expose a CF-style "current state" enum; we mirror it as
-  // 'connected' | 'disconnected' so PlayerScreen's existing live↔vod toggle
-  // works without per-backend branching.
-  const state = isActive ? 'connected' : 'disconnected';
-
-  return (
-    <PlayerScreen
-      uid={`${LIVEPEER_PREFIX}${stream.id}`}
-      title={stream.name}
-      whepUrl={livepeerPlaybackUrl(stream.playbackId)}
-      hlsUrl={null}
-      aeviaHlsUrl={null}
-      aeviaWhepUrl={null}
-      backend="livepeer"
-      livepeerPlayerUrl={livepeerPlayerUrl(stream.playbackId)}
-      vodProcessing={false}
-      creatorDisplayName={creatorDid ?? (creatorAddress ? shortAddress(creatorAddress) : 'aevia')}
-      creatorAddress={creatorAddress ?? null}
-      state={state}
-      startedISO={new Date(stream.createdAt).toISOString()}
-      manifestCid={null}
-      registerBlock={null}
-      registerTxHash={null}
-    />
-  );
-}
-
-async function renderCloudflare(id: string) {
   let live: Awaited<ReturnType<typeof getLiveInput>>;
   try {
     live = await getLiveInput(id);

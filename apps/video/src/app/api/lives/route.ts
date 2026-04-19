@@ -38,9 +38,12 @@ type LiveBackend = 'cloudflare' | 'aevia-mesh' | 'livepeer';
  * gated behind explicit env-var feature flags (mesh = NEXT_PUBLIC_AEVIA_MESH_URL,
  * livepeer = NEXT_PUBLIC_LIVEPEER_AVAILABLE + LIVEPEER_API_KEY).
  *
- * Live ID conventions: Cloudflare and aevia-mesh return naked UIDs.
- * Livepeer prefixes its UID with `lp:` so the per-live routes can
- * dispatch reads to the right backend without a separate lookup table.
+ * Live ID conventions: all backends return naked UIDs. Routing per-backend
+ * is by URL segment — `/live/[id]` for cloudflare, `/live/mesh/[id]` for
+ * aevia-mesh, `/live/livepeer/[id]` for livepeer. We tried prefixing the
+ * Livepeer uid with `lp:` to keep one URL space, but the `:` got URL-
+ * encoded inconsistently between the browser and next-on-pages, breaking
+ * route dispatch in production. Per-backend segments side-step that.
  */
 export async function POST(request: Request) {
   const session = await readAeviaSession();
@@ -97,9 +100,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           backend,
-          // Prefix with `lp:` so /live/[id] routes know to dispatch reads
-          // to the Livepeer client rather than the Cloudflare client.
-          uid: `lp:${stream.id}`,
+          uid: stream.id,
           whipUrl: livepeerIngestUrl(stream.streamKey),
           whepUrl: livepeerPlaybackUrl(stream.playbackId),
           hlsBaseUrl: null,
