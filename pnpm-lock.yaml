@@ -97,6 +97,11 @@ catalogs:
       specifier: ^3.24.1
       version: 3.25.76
 
+patchedDependencies:
+  '@cloudflare/next-on-pages@1.13.16':
+    hash: 1c44ade9563cf8e537accdd3ae31fd5394325de23ab9ed0af8126f84c757617e
+    path: patches/@cloudflare__next-on-pages@1.13.16.patch
+
 importers:
 
   .:
@@ -158,7 +163,7 @@ importers:
     devDependencies:
       '@cloudflare/next-on-pages':
         specifier: 'catalog:'
-        version: 1.13.16(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(next@15.5.15(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(utf-8-validate@6.0.6)(wrangler@3.114.17(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+        version: 1.13.16(patch_hash=1c44ade9563cf8e537accdd3ae31fd5394325de23ab9ed0af8126f84c757617e)(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(next@15.5.15(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(utf-8-validate@6.0.6)(wrangler@3.114.17(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 4.20260416.2
@@ -270,7 +275,7 @@ importers:
     devDependencies:
       '@cloudflare/next-on-pages':
         specifier: 'catalog:'
-        version: 1.13.16(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(next@15.5.15(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(utf-8-validate@6.0.6)(wrangler@3.114.17(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+        version: 1.13.16(patch_hash=1c44ade9563cf8e537accdd3ae31fd5394325de23ab9ed0af8126f84c757617e)(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(next@15.5.15(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(utf-8-validate@6.0.6)(wrangler@3.114.17(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@cloudflare/workers-types':
         specifier: 'catalog:'
         version: 4.20260416.2
@@ -6801,7 +6806,7 @@ snapshots:
     dependencies:
       mime: 3.0.0
 
-  '@cloudflare/next-on-pages@1.13.16(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(next@15.5.15(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(utf-8-validate@6.0.6)(wrangler@3.114.17(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
+  '@cloudflare/next-on-pages@1.13.16(patch_hash=1c44ade9563cf8e537accdd3ae31fd5394325de23ab9ed0af8126f84c757617e)(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(next@15.5.15(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(utf-8-validate@6.0.6)(wrangler@3.114.17(@cloudflare/workers-types@4.20260416.2)(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
     dependencies:
       acorn: 8.16.0
       ast-types: 0.14.2

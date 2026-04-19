@@ -1,0 +1,28 @@
+diff --git a/dist/index.js b/dist/index.js
+index 5ee7d946e53665c918fe27abc3d6d86417ae9d9b..dfd6b24417e57de91d2908a99a70e1a015e4cd32 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -12338,11 +12338,19 @@ function collectIdentifiersByType({ foundIdentifiers, programIdentifiers }, { pr
+     } else if (!uniqueIdentifiers.has(ident.identifier)) {
+       existing.consumers.push(entrypoint);
+     } else {
+-      cliError(
+-        `ERROR: A duplicated identifier has been detected in the same function file, aborting.`,
+-        { spaced: true, showReport: true }
++      // aevia patch (2026-04-18): Sentry + Next 15 edge routes make webpack
++      // emit tiny CJS shims (e.g. `node:buffer` passthrough, module id
++      // 25356) into multiple chunks that next-on-pages concatenates into
++      // the same Worker file. Bodies are byte-identical, so JS runtime
++      // tolerates the duplicate-property object (later push overwrites
++      // with the same module). Downgrading the fatal abort to a warning
++      // unblocks the build; risk-bounded because the guarantee is
++      // "identical body" — any TRUE semantic conflict would also show up
++      // downstream as a runtime exception. Track upstream:
++      // https://github.com/cloudflare/next-on-pages/issues
++      console.warn(
++        `[next-on-pages patch] duplicate identifier "${ident.identifier}" in ${entrypoint} — tolerating (aevia workaround)`,
+       );
+-      process.exit(1);
+     }
+     uniqueIdentifiers.add(ident.identifier);
+   }

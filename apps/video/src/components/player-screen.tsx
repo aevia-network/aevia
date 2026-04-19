@@ -2,7 +2,6 @@
 
 import { BottomNav } from '@/components/bottom-nav';
 import { explorerTxUrl } from '@/lib/chain';
-import type { MeshHandle } from '@/lib/mesh/p2p';
 import { fetchIceServers } from '@/lib/webrtc/ice';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
 import {
@@ -24,9 +23,16 @@ import {
   Send,
   Share2,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+// Fase 3.1 — client-only boundary for libp2p. Loading via next/dynamic
+// with ssr:false keeps the libp2p ESM graph out of the edge-function
+// compilation unit, which sidesteps the duplicated-identifier bug in
+// next-on-pages 1.13 when concatenating edge chunks.
+const MeshBoot = dynamic(() => import('@/components/mesh-boot'), { ssr: false });
 
 /**
  * Mirrors Stitch screen `7687d89d09ff44378cad9f532419fc84` ("Aevia — Live
@@ -124,7 +130,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
   const [_activePeerId, setActivePeerId] = useState<string | null>(null);
 
   // P2P browser mesh state (Fase 3.1). Lazy-loaded when ?p2p=1.
-  const meshHandleRef = useRef<MeshHandle | null>(null);
+  const [meshEnabled, setMeshEnabled] = useState(false);
   const [meshStats, setMeshStats] = useState<{
     connected: number;
     topicPeers: number;
@@ -249,54 +255,19 @@ export function PlayerScreen(props: PlayerScreenProps) {
   // is pure observability in 3.1 — no video delivery yet; Fase 3.2
   // adds chunk relay + 3.3 adds WebRTC RTP relay viewer-to-viewer.
   useEffect(() => {
-    if (mode !== 'live') return;
+    if (mode !== 'live') {
+      setMeshEnabled(false);
+      setMeshStats(null);
+      return;
+    }
     if (typeof window === 'undefined') return;
     const p2pEnabled = new URLSearchParams(window.location.search).get('p2p') === '1';
     if (!p2pEnabled) return;
     if (!props.aeviaSessionId) return;
-    const bootstraps = props.aeviaLibp2pBootstraps ?? [];
-    if (bootstraps.length === 0) return;
-
-    let cancelled = false;
-    let statusPoll: ReturnType<typeof setInterval> | undefined;
-    void (async () => {
-      try {
-        const mod = await import('@/lib/mesh/p2p');
-        if (cancelled) return;
-        const handle = await mod.initMesh({
-          sessionId: props.aeviaSessionId as string,
-          bootstraps,
-          heartbeatIntervalMs: 5_000,
-        });
-        if (cancelled) {
-          await handle.stop();
-          return;
-        }
-        meshHandleRef.current = handle;
-        // Poll status every 2s — cheap (reads in-memory counters)
-        // and sufficient UX feedback for the debug chip.
-        statusPoll = setInterval(() => {
-          const s = handle.status();
-          setMeshStats({ connected: s.connectedPeerCount, topicPeers: s.topicPeerCount });
-        }, 2_000);
-        // Immediate first snapshot so the chip renders as soon as
-        // libp2p signals ready; the 2s poll refines it afterwards.
-        const s0 = handle.status();
-        setMeshStats({ connected: s0.connectedPeerCount, topicPeers: s0.topicPeerCount });
-      } catch (err) {
-        // libp2p boot failures are easy to mask and hard to diagnose
-        // later in prod; log via console.error even in prod builds.
-        // Main viewing path is unaffected either way (WHEP / HLS own
-        // playback).
-        console.error('[p2p] init failed:', err);
-      }
-    })();
-
+    if ((props.aeviaLibp2pBootstraps?.length ?? 0) === 0) return;
+    setMeshEnabled(true);
     return () => {
-      cancelled = true;
-      if (statusPoll) clearInterval(statusPoll);
-      void meshHandleRef.current?.stop();
-      meshHandleRef.current = null;
+      setMeshEnabled(false);
       setMeshStats(null);
     };
   }, [mode, props.aeviaSessionId, props.aeviaLibp2pBootstraps]);
@@ -518,6 +489,13 @@ export function PlayerScreen(props: PlayerScreenProps) {
       />
 
       <main className="mx-auto max-w-2xl">
+        {meshEnabled && props.aeviaSessionId && props.aeviaLibp2pBootstraps && (
+          <MeshBoot
+            sessionId={props.aeviaSessionId}
+            bootstraps={props.aeviaLibp2pBootstraps}
+            onStatus={setMeshStats}
+          />
+        )}
         <PlayerFrame
           videoRef={videoRef}
           mode={mode}

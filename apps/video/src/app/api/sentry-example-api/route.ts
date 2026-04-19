@@ -1,4 +1,9 @@
 import * as Sentry from '@sentry/nextjs';
+
+// Cloudflare Pages deploy requires every non-static route declare the
+// edge runtime explicitly. This synthetic sentry test route is no
+// exception — even though it's dev-only.
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 class SentryExampleAPIError extends Error {

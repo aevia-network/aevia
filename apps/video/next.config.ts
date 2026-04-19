@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
     typedRoutes: false,
   },
   transpilePackages: ['@aevia/ui', '@aevia/auth', '@aevia/protocol'],
-  webpack(config) {
+  webpack(config, { nextRuntime }) {
     // `cross-fetch/dist/browser-ponyfill.js` imports `whatwg-fetch`, which
     // replaces `globalThis.fetch` with an `XMLHttpRequest`-backed polyfill
     // as an import-time side effect. Cloudflare's edge runtime has `fetch`
@@ -41,6 +41,31 @@ const nextConfig: NextConfig = {
       'cross-fetch': crossFetchStub,
       'whatwg-fetch': crossFetchStub,
     };
+
+    // next-on-pages 1.13 concatenates every edge function's webpack chunks
+    // into a single Worker file. Tiny CJS shims for `node:` built-ins
+    // (e.g. `a.exports=require("node:buffer")`) get emitted into multiple
+    // chunks, and concatenation then trips the post-processor with
+    // "A duplicated identifier has been detected". Workers expose these
+    // built-ins natively via `nodejs_compat`, so externalizing them keeps
+    // the shim out of the bundle entirely.
+    if (nextRuntime === 'edge') {
+      const externals = Array.isArray(config.externals)
+        ? config.externals
+        : config.externals != null
+          ? [config.externals]
+          : [];
+      config.externals = [
+        ...externals,
+        ({ request }: { request?: string }, cb: (err?: Error | null, result?: string) => void) => {
+          if (request?.startsWith('node:')) {
+            cb(null, `commonjs ${request}`);
+            return;
+          }
+          cb();
+        },
+      ];
+    }
     return config;
   },
 };

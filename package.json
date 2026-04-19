@@ -45,6 +45,9 @@
     "wrangler": "^3.99.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "lefthook", "sharp", "workerd"]
+    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "lefthook", "sharp", "workerd"],
+    "patchedDependencies": {
+      "@cloudflare/next-on-pages@1.13.16": "patches/@cloudflare__next-on-pages@1.13.16.patch"
+    }
   }
 }
