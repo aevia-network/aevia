@@ -5,7 +5,7 @@ import { MeshDot } from '@aevia/ui';
 import { ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
 
-export type NavSlug = 'whitepaper' | 'spec' | 'aup' | 'roadmap' | 'manifesto';
+export type NavSlug = 'whitepaper' | 'spec' | 'aup' | 'roadmap' | 'manifesto' | 'faq';
 
 export function Nav({
   active,
@@ -24,6 +24,7 @@ export function Nav({
     { slug: 'aup', label: dict.common.nav.aup },
     { slug: 'roadmap', label: dict.common.nav.roadmap },
     { slug: 'manifesto', label: dict.common.nav.manifesto },
+    { slug: 'faq', label: dict.common.nav.faq },
   ];
 
   const ptPath = switchLocalePath('pt-BR', pathname);

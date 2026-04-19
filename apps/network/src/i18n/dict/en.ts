@@ -10,6 +10,7 @@ export const en: Dictionary = {
       aup: 'aup',
       roadmap: 'roadmap',
       manifesto: 'manifesto',
+      faq: 'faq',
       externalVideo: 'aevia.video',
     },
     footer: {
@@ -1024,6 +1025,131 @@ export const en: Dictionary = {
     home: 'back to home',
     spec: 'go to spec',
     quote: '“persistence does not imply distribution.”',
+  },
+  faq: {
+    meta: {
+      title: 'faq · aevia.network',
+      description:
+        'Direct answers about the Aevia protocol: architecture, economics, moderation, node operation. Addressed to developers, creators, operators, and investors.',
+    },
+    eyebrow: 'community',
+    title: 'frequently asked questions',
+    subtitle:
+      'Direct answers to the questions the community keeps asking on Reddit, Discord, and investor calls. Each answer points to the corresponding normative document where applicable. If something is missing, open an issue at github.com/aevia-network/aevia.',
+    stamp: 'version 0.1 · published 2026-04-19 · aevia llc',
+    lead: 'This FAQ is a living document. Links always point to an RFC or ADR, never to marketing. If you find divergence between an answer here and the normative spec, the spec wins.',
+    sections: [
+      {
+        id: 'developers',
+        heading: 'developers',
+        items: [
+          {
+            q: 'why not just use IPFS + Filecoin?',
+            a: 'IPFS solves content addressing and best-effort propagation. It does not solve non-custodial payment proportional to bytes actually served — which is why large corpora on the public IPFS network disappear the moment someone stops paying Pinata. Aevia uses the same content-addressing primitives (CIDv1, Merkle root) but adds an on-chain economic rail (Base L2 + USDC) that pays provider-nodes for verifiably served bytes via Proof-of-Relay. Filecoin has an analogous rail but is optimized for cold storage, not sub-second live video delivery. RFC-5 and RFC-8 specify the difference in detail.',
+          },
+          {
+            q: 'how does on-chain write throughput scale?',
+            a: 'We write one manifest hash on-chain per piece of content (typically a live stream or a VOD of minutes to hours), not per chunk, not per byte. Base L2 sustains ~1,000+ TPS on real workloads. At YouTube volume (500 hours/minute, ~30k new pieces/minute at 2-min median length), the protocol would need ~500 TPS — still 2× below the ceiling. Farcaster already operates writing a hash per post on OP mainnet with ~100k casts/day. Storj writes settlement roots to Ethereum. On-chain cost is a function of write frequency, not content size.',
+          },
+          {
+            q: 'can I run a provider-node at home?',
+            a: 'Yes, by design. The Go binary is the same one used by any operator (bare-metal, VPS, GPU marketplace). Minimum requirements: stable bandwidth (~100 Mbps upstream for ingest + delivery), 1 TB storage per ~1000 hours of median video pinned, optional GPU for inference workloads (Blackwell / Ada / Ampere tier). Onboarding flow is documented at aevia.network/providers. On testnet compensation is subsidized; on mainnet the rail is USDC via Proof-of-Relay.',
+          },
+          {
+            q: 'what is the license split between Apache-2.0 and AGPL-3.0?',
+            a: 'Protocol specs and core primitives (cryptography, ABI, EIP-712 builders) are Apache-2.0 to encourage independent implementations. Reference client (aevia.video) and provider-node runtime are AGPL-3.0 to ensure forks stay open. Solidity contracts are Apache-2.0 (no fork restriction). Full detail in LICENSES.md in the repo.',
+          },
+          {
+            q: 'where does the video actually live?',
+            a: 'On provider-nodes — Go binaries running libp2p that pin CMAF chunks in local storage (BadgerDB + filesystem). The on-chain ContentRegistry only holds the manifest hash (32 bytes) that anchors the Merkle root over chunks. Viewers discover providers via DHT (Kademlia, namespace /aevia/kad/1.0.0) and fetch bytes directly — never from the chain. The on-chain rail coordinates payment, not storage.',
+          },
+        ],
+      },
+      {
+        id: 'creators',
+        heading: 'creators',
+        items: [
+          {
+            q: 'do viewers need a crypto wallet?',
+            a: 'No. Viewers can watch anonymously like on any video site. A wallet is only needed for optional on-chain actions: boosting a creator, supporting a stream with USDC, or submitting a score correction. The playback layer is independent of the economic rail.',
+          },
+          {
+            q: 'what happens if I am deplatformed elsewhere?',
+            a: 'The protocol was designed for exactly this case. As long as you hold the seed phrase of your DID (did:pkh derived from your Privy wallet), you retain authority over your channel and your prior content remains accessible. There is no central operator that can revoke your identity.',
+          },
+          {
+            q: 'is my content really permanent or just "pinned"?',
+            a: 'Persistence is proportional to what you deposit into the Persistence Pool per CID. The protocol economically guarantees that provider-nodes are paid to maintain copies as long as deposit exists; it does NOT guarantee permanence in the Arweave sense (one-time write, eternal storage). For content that needs long-term permanence (historical archives, testimony), Aevia supports a cold-storage tier via Arweave as an L4 fallback. RFC-5 §3 documents the difference between "persistent" (economically sustained) and "permanent" (cold-stored).',
+          },
+          {
+            q: 'how do I get paid, and in what currency?',
+            a: 'In USDC on Base L2, via the BoostRouter when viewers amplify you. Non-custodial settlement — Aevia LLC never holds your funds. You withdraw directly to your Privy wallet, or you can off-ramp via Circle Mint to USD in a bank account. Default split: 50% creator, 30% Persistence Pool, 19% LLC operational, 1% Council fund. Split is Council-governable (RFC-8 §4.3).',
+          },
+          {
+            q: 'can I delete my own content?',
+            a: 'You can revoke the Persistence Pool deposits associated with a specific CID — when the deposit zeroes out, rational provider-nodes stop pinning and the content falls out of hot cache. But any copy already distributed via the public IPFS network or archived by third parties is beyond your control. That is a property of content addressing — not specific to Aevia. If privacy is a strong requirement (not just "take it down"), published video is not the right tool.',
+          },
+        ],
+      },
+      {
+        id: 'operators',
+        heading: 'node operators',
+        items: [
+          {
+            q: 'what hardware do I need?',
+            a: 'Minimum viable: 4 CPU cores, 8 GB RAM, 1 TB SSD, 100 Mbps stable upstream. Recommended: 8 cores, 16 GB RAM, 2 TB NVMe, 1 Gbps upstream, consumer GPU (RTX 4090/5090) if you want to accept inference workloads. Provider-node runs on bare-metal, VPS, or GPU marketplace (Salad Cloud, rent.ai, Akash).',
+          },
+          {
+            q: 'can I run on Salad / rent.ai / Akash?',
+            a: 'Yes. The protocol is supply-agnostic — a Proof-of-Relay receipt commits the same cryptographic attestation regardless of where the GPU physically sits. The aevia-node Docker container is published; deploy it with the identity flags and you join the network. A rational operator compares the Aevia subsidy to the real-time spot price on the marketplace and allocates capacity accordingly. RFC-8 §7.5.',
+          },
+          {
+            q: 'when and how do I get paid?',
+            a: 'Every epoch (default 24h), the coordinator aggregates Proof-of-Relay receipts submitted by provider-nodes, computes the Merkle root, and submits it on-chain. After a 72h contestation window (RFC-5 §4), the settlement is finalized and each provider can call PersistencePool.claim(settlementId) to withdraw their USDC. The entire flow is non-custodial — Aevia LLC never mediates the funds.',
+          },
+          {
+            q: 'what if my node goes offline?',
+            a: 'No immediate problem — other providers pinning the same CIDs keep serving. You lose the revenue from bytes you would have served while offline, but you do not lose access to already-accumulated revenue (it stays in your claimable balance). Reconnection is automatic: on return, the binary re-announces your pinned CIDs via DHT and starts receiving requests again.',
+          },
+          {
+            q: 'what is Proof-of-Relay exactly?',
+            a: 'A dual-signed receipt (Ed25519 viewer + Ed25519 provider) certifying "this viewer received N bytes of CID X from this provider at timestamp T". Providers aggregate receipts and submit them to the coordinator. The coordinator builds a Merkle root over the aggregated receipts and submits on-chain. Solidity contracts validate the root; payment is proportional to attested bytes, not to uptime. RFC-5 §4 details the format.',
+          },
+        ],
+      },
+      {
+        id: 'investors',
+        heading: 'investors',
+        items: [
+          {
+            q: 'what is the moat vs Cloudflare Stream / Mux / Livepeer / PeerTube?',
+            a: 'Cloudflare and Mux are centralized — anyone can be deplatformed by internal decision. Livepeer decentralizes transcoding but delivery is still a centralized CDN. PeerTube decentralizes federation but has no on-chain payment rail. Aevia is the only stack combining: decentralized delivery (libp2p mesh), decentralized compute (inference via provider-nodes), decentralized payment (non-custodial USDC), and decentralized governance (Council multisig). The combination is the moat; no competitor can replicate it without rewriting their architecture.',
+          },
+          {
+            q: 'is there an Aevia token?',
+            a: 'No. The entire economy runs on USDC (regulated stablecoin, Circle-issued). There is no speculative Aevia token, no ICO, no insider vesting of "future token". This is an architectural decision — the thesis "stablecoin 1:1 dollar" avoids foreign-exchange variance that wipes out small operators and avoids Howey-test regulatory risk. Precedent: Storj (since 2019), Farcaster (USDC-native since 2024).',
+          },
+          {
+            q: 'how does Aevia LLC make money if it does not custody the economics?',
+            a: 'Five operational services, detailed at /operator §7: (a) aevia.video reference client with 10% take-rate on tips/subscriptions; (b) relayer fee per manifest registration (~$0.05 USDC in steady state); (c) settlement aggregator fee (0.5% of epoch volume); (d) risk classifier SaaS B2B for third parties operating their own Aevia instances; (e) enterprise deployments. None of this depends on custodying third-party funds — all economic flows run between viewers, creators, and providers via on-chain contracts.',
+          },
+          {
+            q: 'what is the TAM?',
+            a: 'Quantifiable TAM in the pitch: (a) global video streaming market — $180B in 2025, creator economy $250B+ by 2027; (b) adjacent DePIN compute (GPU sharing) market — valued in the tens of billions per ARK / Messari; (c) sovereignty / anti-censorship market is harder to quantify, but the growth of Rumble / Odysee / Substack indicates trillions in "future of publishing" shifting away from centralized platforms. We do not claim to capture the whole TAM — Aevia’s specific moat is the slice "sovereign content + programmable payment + plural governance".',
+          },
+          {
+            q: 'how do you handle NCMEC / illegal content?',
+            a: 'The AUP (RFC-4) explicitly excludes categories: CSAM, operational terrorism, doxing/swatting, financial fraud. These do not receive Persistence Pool subsidy or feed boost; technically the bytes may exist on the public IPFS network (outside any protocol\'s control), but the Aevia economic rail does not pay to maintain them. NCMEC-class incidents have a fast-path: Aevia LLC as an operator has a regulatory obligation (18 U.S.C. 2258A) to report to the NCMEC CyberTipline and cooperate with authorities. RFC-7 specifies the Council workflow; a fast-path for CSAM is a normative extension in draft.',
+          },
+        ],
+      },
+    ],
+    cta: {
+      heading: 'did not find the answer?',
+      body: 'Open an issue at github.com/aevia-network/aevia, or email contact@aevia.network. We answer publicly — no architecture question becomes private context.',
+      github: 'open issue on github',
+      email: 'send email',
+    },
   },
   whitepaper: {
     meta: {
