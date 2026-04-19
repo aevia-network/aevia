@@ -18,6 +18,11 @@ const serverSchema = z.object({
     .string()
     .min(32, 'AEVIA_PUBLISHER_TOKEN_SECRET must be >= 32 chars')
     .optional(),
+  // Livepeer Studio API key (server-only). Required when accepting
+  // `body.backend: 'livepeer'` on POST /api/lives. Absent disables the
+  // Livepeer dispatch with a 400 response. Mint at:
+  // https://livepeer.studio → Settings → API Keys.
+  LIVEPEER_API_KEY: z.string().min(1).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -121,4 +126,10 @@ export const clientEnv = {
    * NEXT_PUBLIC_AEVIA_DEV_BYPASS_AUTH from the project env.
    */
   devBypassAuth: process.env.NEXT_PUBLIC_AEVIA_DEV_BYPASS_AUTH === 'true',
+  /**
+   * When true, the `/live/new` UI shows Livepeer as a third backend option.
+   * Toggled in CF Pages env once `LIVEPEER_API_KEY` (server-only) is wired
+   * — without the server key the UI option would 400 on submit.
+   */
+  livepeerAvailable: process.env.NEXT_PUBLIC_LIVEPEER_AVAILABLE === 'true',
 } as const;
