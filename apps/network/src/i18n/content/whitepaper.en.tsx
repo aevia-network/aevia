@@ -388,7 +388,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s7-risk-score" className="py-16">
+      <section id="s8-risk-score" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§7</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Risk Score
@@ -466,7 +466,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s8-governance" className="py-16">
+      <section id="s9-governance" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§8</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Governance
@@ -513,7 +513,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s9-privacy-model" className="py-16">
+      <section id="s10-privacy-model" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§9</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Privacy Model
@@ -563,7 +563,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s10-adversarial-analysis" className="py-16">
+      <section id="s11-adversarial-analysis" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§10</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Adversarial Analysis
@@ -631,7 +631,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s11-simplified-verification" className="py-16">
+      <section id="s12-simplified-verification" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§11</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Simplified Verification
@@ -688,7 +688,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s12-economic-model" className="py-16">
+      <section id="s13-economic-model" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§12</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Economic Model
@@ -758,7 +758,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s13-related-work" className="py-16">
+      <section id="s14-related-work" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§13</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Related Work
@@ -810,7 +810,7 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s14-conclusion" className="py-16">
+      <section id="s15-conclusion" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§14</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Conclusion
