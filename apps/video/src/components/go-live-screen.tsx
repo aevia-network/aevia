@@ -178,6 +178,10 @@ export function GoLiveScreen({ displayName, address, did }: GoLiveScreenProps) {
         stream: streamRef.current,
         iceServers,
         did: isAeviaMesh ? apiLive.creatorDid : undefined,
+        // Livepeer POPs reject cross-origin DELETE preflight (CORS). Server
+        // ends the session via packet timeout (~30s) regardless. See
+        // WhipOptions.skipResourceDelete jsdoc.
+        skipResourceDelete: isLivepeer,
         onConnectionStateChange: (s) => {
           // WebRTC RTCPeerConnection state machine:
           //   - `connected`: stream is flowing — show "live"

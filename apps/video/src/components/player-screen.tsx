@@ -229,6 +229,10 @@ export function PlayerScreen(props: PlayerScreenProps) {
         whepUrl: targetWhepUrl,
         iceServers,
         debugLog,
+        // Livepeer POPs reject cross-origin DELETE preflight (CORS).
+        // Server ends the session via packet timeout. See
+        // WhepOptions.skipResourceDelete jsdoc.
+        skipResourceDelete: props.backend === 'livepeer',
         onConnectionStateChange: (s) => {
           if (s === 'connected') setLiveStatus('playing');
           if (s === 'failed' || s === 'closed') {

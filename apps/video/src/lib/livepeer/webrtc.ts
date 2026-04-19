@@ -27,38 +27,27 @@ export interface LivepeerEndpoint {
 /**
  * Resolve a Livepeer WHIP/WHEP base URL into the geo-routed endpoint and
  * matching ICE servers. The base URL takes the form
- * `https://livepeer.studio/webrtc/{streamKey-or-playbackId}` — we HEAD it,
- * follow the `Location` header manually (so we keep the resolved host out of
- * the browser's redirect cache), and synthesise the STUN+TURN config.
+ * `https://livepeer.studio/webrtc/{streamKey-or-playbackId}`.
  *
- * Throws if the upstream returns a non-redirect status — caller should fall
- * back to STUN-only or surface the error to the user.
+ * We HEAD it with the default `redirect: 'follow'` so the browser
+ * transparently chases the 302 to the closest POP. `res.url` after the
+ * fetch carries the final URL, from which we extract the host for ICE
+ * config. The previous `redirect: 'manual'` + GET fallback path produced
+ * a 405 Method Not Allowed against `livepeer.studio/webrtc/{key}` (only
+ * accepts POST/HEAD/DELETE) — visible in browser console even though
+ * the broadcast itself worked because the bad GET response carried the
+ * resolved POP URL anyway.
  */
 export async function resolveLivepeerEndpoint(baseUrl: string): Promise<LivepeerEndpoint> {
-  // `redirect: 'manual'` ensures we read the Location header ourselves
-  // instead of letting the browser auto-follow (which would flip the method
-  // semantics for the eventual POST).
-  const res = await fetch(baseUrl, { method: 'HEAD', redirect: 'manual' });
-
-  // `opaqueredirect` is the spec status when the browser sees a redirect
-  // but is NOT allowed to follow it — that's exactly our case. The
-  // Location header is on the underlying response but not exposed via
-  // `res.headers.get`. Workaround: fetch with `redirect: 'follow'` on a
-  // GET-equivalent request and read `res.url` after the redirect.
-  if (res.type === 'opaqueredirect' || res.status === 0) {
-    const followed = await fetch(baseUrl, { method: 'GET', redirect: 'follow' });
-    return endpointFromUrl(followed.url || baseUrl);
+  try {
+    const res = await fetch(baseUrl, { method: 'HEAD' });
+    return endpointFromUrl(res.url || baseUrl);
+  } catch {
+    // Network error before redirect chain completes — return canonical URL.
+    // Livepeer will still route server-side; the only loss is geo-optimal
+    // ICE selection (we'll get whatever STUN/TURN the canonical host serves).
+    return endpointFromUrl(baseUrl);
   }
-
-  const location = res.headers.get('location');
-  if (location) {
-    const resolvedUrl = new URL(location, baseUrl).toString();
-    return endpointFromUrl(resolvedUrl);
-  }
-
-  // Some clients/Livepeer regions skip the redirect step entirely and
-  // accept SDP at the canonical URL. Treat that as a no-op resolve.
-  return endpointFromUrl(baseUrl);
 }
 
 function endpointFromUrl(url: string): LivepeerEndpoint {
