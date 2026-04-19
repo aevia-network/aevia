@@ -582,8 +582,10 @@ func (s *Server) ActiveSessionCount() int {
 // OnSession callbacks are NOT fired for injected sessions: those
 // callbacks wire origin-side behaviour (CMAF segmenter, DHT announce
 // of the manifest CID) that should run once, on the origin. The
-// mirror announces the sessionCID separately via mirror.Server's own
-// lifecycle hook.
+// mirror announces the sessionCID + joins the GossipSub topic via
+// mirror.Server's own OnSession hook, which is assigned before
+// mirror.Server.Start() is called — the ordering there is race-free
+// by construction, unlike an InjectSession-level hook would be.
 //
 // Returns an error when the ID is already registered — mirror and
 // origin on the same node would collide on ID; this guards that.
