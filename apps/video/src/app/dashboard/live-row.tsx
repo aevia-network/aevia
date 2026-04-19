@@ -87,7 +87,13 @@ export function LiveRow({ live }: { live: LiveRowData }) {
 
   const handleRegister = async () => {
     if (!walletsReady) return;
-    const wallet = wallets[0];
+    // Always pick the Privy-managed embedded wallet. `wallets[0]` would
+    // return whatever the browser injected first via window.ethereum —
+    // when the user has competing wallet extensions (Coinbase + MetaMask
+    // both fighting for the global), the loser sits in a 4900-disconnect
+    // loop and any signing dispatched to it stalls. See client.tsx jsdoc
+    // for the full rationale.
+    const wallet = wallets.find((w) => w.walletClientType === 'privy');
     if (!wallet) {
       setRegisterState({ kind: 'error', message: 'carteira indisponível' });
       return;
@@ -229,7 +235,13 @@ export function LiveRow({ live }: { live: LiveRowData }) {
    */
   const handleRegisterSponsored = async () => {
     if (!walletsReady) return;
-    const wallet = wallets[0];
+    // Always pick the Privy-managed embedded wallet. `wallets[0]` would
+    // return whatever the browser injected first via window.ethereum —
+    // when the user has competing wallet extensions (Coinbase + MetaMask
+    // both fighting for the global), the loser sits in a 4900-disconnect
+    // loop and any signing dispatched to it stalls. See client.tsx jsdoc
+    // for the full rationale.
+    const wallet = wallets.find((w) => w.walletClientType === 'privy');
     if (!wallet) {
       setRegisterState({ kind: 'error', message: 'carteira indisponível' });
       return;
