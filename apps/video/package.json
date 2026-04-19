@@ -30,6 +30,7 @@
     "@libp2p/identify": "^4.1.2",
     "@libp2p/websockets": "catalog:",
     "@radix-ui/react-slot": "^1.1.1",
+    "@sentry/nextjs": "^10.49.0",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "hls.js": "catalog:",

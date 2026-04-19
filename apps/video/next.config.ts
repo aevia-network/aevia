@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from 'next';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,4 +45,29 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry source-map upload + tunnel route. Auth token comes from
+// `.env.sentry-build-plugin` (gitignored) at build time. Tunnel route
+// `/monitoring` proxies browser → Sentry to dodge ad-blockers; the
+// existing middleware matcher only protects `/dashboard /live/new /wallet`,
+// so it doesn't intercept the tunnel.
+export default withSentryConfig(nextConfig, {
+  org: 'dgl-tech',
+  project: 'aevia-video',
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Only print upload logs in CI so local dev stays quiet.
+  silent: !process.env.CI,
+  // Upload a wider set of client source files so prod stack traces resolve
+  // to the original module names. Adds a few seconds to build time, worth it.
+  widenClientFileUpload: true,
+  // Tunnel browser → Sentry through this route to dodge ad-blockers.
+  tunnelRoute: '/monitoring',
+  webpack: {
+    // Project deploys to Cloudflare Pages, not Vercel — automaticVercelMonitors
+    // would try to wire Vercel Cron monitors that don't exist. Off.
+    automaticVercelMonitors: false,
+    treeshake: {
+      // Drop Sentry's debug logger statements from the prod bundle.
+      removeDebugLogging: true,
+    },
+  },
+});
