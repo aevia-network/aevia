@@ -125,27 +125,23 @@ export async function initMesh(opts: InitMeshOptions): Promise<MeshHandle> {
     }),
   );
 
-  // Track topic peers we've seen at least once. GossipSub raises
-  // subscription-change events as peers join/leave; we count uniques.
-  //
   // The createLibp2p type returns the factory FUNCTION for each
   // service (libp2p's internals invoke them to produce the instance),
   // but at runtime `node.services.pubsub` IS the GossipSub instance.
   // Cast through unknown to paper over that typing gap — it's a
   // well-known libp2p TS quirk.
-  const topicPeers = new Set<string>();
   const pubsub = node.services.pubsub as unknown as GossipSub;
-  pubsub.addEventListener('subscription-change', (evt) => {
-    const detail = evt.detail;
-    for (const sub of detail.subscriptions) {
-      if (sub.topic !== topic) continue;
-      if (sub.subscribe) {
-        topicPeers.add(detail.peerId.toString());
-      } else {
-        topicPeers.delete(detail.peerId.toString());
-      }
-    }
-  });
+  // Note on counting topic peers: we previously tracked a Set via
+  // `subscription-change` events, but that event only fires for
+  // CHANGES announced after the listener is attached. Providers that
+  // were already subscribed when the browser connects carry their
+  // subscription metadata in the initial pubsub RPC handshake — no
+  // change event fires, so the Set stayed empty and the viewer chip
+  // read "0 na sala" even with a healthy, subscribed provider on the
+  // other end. Fix: query `pubsub.getSubscribers(topic)` directly
+  // from status(), which returns all directly-connected peers that
+  // currently announce subscription to the topic (regardless of when
+  // we learned about it). Source of truth, not delta-stream.
 
   // Join the session's topic. Publishes won't fan out anywhere
   // yet — they land on any peer already subscribed, and gossipsub
@@ -182,7 +178,7 @@ export async function initMesh(opts: InitMeshOptions): Promise<MeshHandle> {
   return {
     status: (): MeshStatus => ({
       connectedPeerCount: node.getConnections().length,
-      topicPeerCount: topicPeers.size,
+      topicPeerCount: pubsub.getSubscribers(topic).length,
       selfPeerId: node.peerId.toString(),
     }),
     publish: async (payload: Uint8Array) => {
