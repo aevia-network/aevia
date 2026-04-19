@@ -10,6 +10,7 @@ import {
   contentRegistryAddress,
   shortAddress,
   sprint2PlaceholderManifestCid,
+  usePrivy,
   useSendTransaction,
   useSignTypedData,
   useWallets,
@@ -57,6 +58,14 @@ export function LiveRow({ live }: { live: LiveRowData }) {
   const { wallets, ready: walletsReady } = useWallets();
   const { signTypedData } = useSignTypedData();
   const { sendTransaction } = useSendTransaction();
+  // `getAccessToken` refreshes Privy's short-lived access cookie when its TTL
+  // (~1h) is expiring. We call it right before any signing dispatch so a long
+  // session (browser tab kept open hours after login) doesn't surface as
+  // "Request expired. Please try again." from Privy's signing backend —
+  // observed 2026-04-19 on a multi-hour tab where the click→sign chain
+  // completed against a stale token. The call is a silent no-op when the
+  // current token is still fresh.
+  const { getAccessToken } = usePrivy();
   const [registerState, setRegisterState] = useState<RegisterState>(() => {
     if (live.manifestCid && live.registerTxHash && typeof live.registerBlock === 'number') {
       return { kind: 'success', block: live.registerBlock, txHash: live.registerTxHash };
@@ -145,6 +154,11 @@ export function LiveRow({ live }: { live: LiveRowData }) {
       });
 
       setRegisterState({ kind: 'running', step: 'sign' });
+      // Refresh the Privy access cookie before signing — silent no-op when
+      // fresh, transparent renew when within a few minutes of expiry.
+      // Prevents "Request expired" from Privy's signing backend on long
+      // sessions (multi-hour tab kept open after login).
+      await getAccessToken().catch(() => undefined);
       // Privy's `useSignTypedData` routes to the correct signer:
       //   - embedded wallet: signs with the Privy-managed key (modal UI);
       //   - external wallet: proxies `eth_signTypedData_v4` to the injected
@@ -289,6 +303,9 @@ export function LiveRow({ live }: { live: LiveRowData }) {
       });
 
       setRegisterState({ kind: 'running', step: 'sign' });
+      // See handleRegister jsdoc on getAccessToken — defensive Privy
+      // session refresh before signing on long-lived tabs.
+      await getAccessToken().catch(() => undefined);
       const { signature } = await signTypedData(
         typedData as unknown as Parameters<typeof signTypedData>[0],
         { address: owner },
