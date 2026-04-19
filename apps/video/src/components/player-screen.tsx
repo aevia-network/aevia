@@ -2,6 +2,7 @@
 
 import { BottomNav } from '@/components/bottom-nav';
 import { explorerTxUrl } from '@/lib/chain';
+import { resolveLivepeerEndpoint } from '@/lib/livepeer/webrtc';
 import { fetchIceServers } from '@/lib/webrtc/ice';
 import { type WhepSession, playWhep } from '@/lib/webrtc/whep';
 import {
@@ -102,6 +103,21 @@ export interface PlayerScreenProps {
    */
   aeviaLibp2pBootstraps?: string[];
   vodProcessing?: boolean;
+  /**
+   * Which backend the live was published with. Drives the WHEP path:
+   *   - 'cloudflare' (default): negotiate against `whepUrl` directly.
+   *   - 'aevia-mesh': prefer `aeviaWhepUrl` / failover candidates.
+   *   - 'livepeer': resolve `whepUrl` via HEAD redirect to the closest POP
+   *     and use the resolved host's ICE servers (Livepeer's STUN/TURN).
+   * Optional for back-compat with existing callers.
+   */
+  backend?: 'cloudflare' | 'aevia-mesh' | 'livepeer';
+  /**
+   * Livepeer-only: the managed `lvpr.tv` player URL. Surfaced as a
+   * fallback link under the inline player so viewers without WebRTC
+   * (e.g. older Safari on locked-down corp networks) can still watch.
+   */
+  livepeerPlayerUrl?: string | null;
   creatorDisplayName: string;
   creatorAddress: `0x${string}` | null;
   state: string;
@@ -192,15 +208,25 @@ export function PlayerScreen(props: PlayerScreenProps) {
     setLiveStatus('connecting');
     setLiveError(null);
     try {
-      // Fetch dynamic ICE servers (STUN + Cloudflare TURN credentials when
-      // configured server-side). Without TURN, viewers on hostile mobile
-      // networks (Vivo 4G CGNAT, corporate firewalls blocking UDP) silently
-      // fail the WebRTC handshake. The TURN relay over TCP/443 routes
-      // around both. `fetchIceServers` never throws — falls back to the
-      // static STUN list on any failure.
-      const iceServers = await fetchIceServers();
+      // ICE + endpoint resolution diverges per backend:
+      //   - Livepeer: HEAD redirect to the geo-routed POP, then use the
+      //     resolved host's STUN/TURN (mixing CF Realtime TURN with
+      //     Livepeer WebRTC playback doesn't work — each relay only
+      //     forwards traffic it has credentials for).
+      //   - Default (cloudflare / aevia-mesh): fetch our managed ICE
+      //     config (includes CF Realtime TURN when configured). TCP/443
+      //     relay is what keeps Vivo 4G/CGNAT viewers connected.
+      let targetWhepUrl = effectiveWhepUrl;
+      let iceServers: RTCIceServer[];
+      if (props.backend === 'livepeer') {
+        const endpoint = await resolveLivepeerEndpoint(effectiveWhepUrl);
+        targetWhepUrl = endpoint.url;
+        iceServers = endpoint.iceServers;
+      } else {
+        iceServers = await fetchIceServers();
+      }
       const session = await playWhep({
-        whepUrl: effectiveWhepUrl,
+        whepUrl: targetWhepUrl,
         iceServers,
         debugLog,
         onConnectionStateChange: (s) => {
@@ -226,7 +252,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
       setLiveError(err instanceof Error ? err.message : 'falha ao conectar');
       setLiveStatus('error');
     }
-  }, [effectiveWhepUrl, props.aeviaFailoverCandidates, props.aeviaSessionId]);
+  }, [effectiveWhepUrl, props.aeviaFailoverCandidates, props.aeviaSessionId, props.backend]);
 
   useEffect(() => {
     if (mode !== 'live') return;
