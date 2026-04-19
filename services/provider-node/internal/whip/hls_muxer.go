@@ -95,16 +95,20 @@ func parseVariantEnv() gohlslib.MuxerVariant {
 	}
 }
 
-// OnVideoFrame satisfies FrameSink. pion's H264Packet depacketizer
-// emits ONE NAL per RTP packet. gohlslib expects an Access Unit —
-// the slice of NALs that compose a single video frame. We batch
-// NALs sharing the same RTP timestamp and flush when the timestamp
-// advances (next frame) or the muxer closes.
+// OnVideoFrame satisfies FrameSink. pion's H264 depacketizer emits
+// a buffer that may concatenate MULTIPLE NALs separated by the
+// 00 00 00 01 Annex-B start code (STAP-A aggregation packets, or
+// multi-slice pictures). gohlslib's WriteH264 expects the Access Unit
+// as a `[][]byte` where each element is ONE NAL — without this split
+// the segmenter reads `au[0][0]&0x1F` and only sees the FIRST NAL's
+// type. If that first NAL is SPS (type 7) instead of IDR (type 5),
+// randomAccess stays false forever → no IDR detected → no segment
+// boundary → the multivariant playlist handler blocks on cond.Wait()
+// indefinitely. This is why /hls/index.m3u8 hung in our first prod
+// test while /playlist.m3u8 (legacy sink) still produced chunks.
 //
-// This is the same batching strategy MediaMTX uses internally and
-// the reason our prior hand-rolled CMAFSegmenter emitted corrupt
-// bitstreams: it wrote NALs one at a time with independent
-// sample durations, which violates the fmp4 AU expectation.
+// We batch NALs sharing the same RTP timestamp (= same Access Unit)
+// and flush when the timestamp advances or the muxer closes.
 func (m *HLSMuxer) OnVideoFrame(f VideoFrame) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -119,11 +123,40 @@ func (m *HLSMuxer) OnVideoFrame(f VideoFrame) {
 		m.flushCurrentAULocked()
 	}
 
-	// Copy the NAL so upstream buffer reuse doesn't corrupt the AU.
-	nalCopy := make([]byte, len(f.NAL))
-	copy(nalCopy, f.NAL)
-	m.currentAU = append(m.currentAU, nalCopy)
+	for _, nalu := range splitAnnexBNALs(f.NAL) {
+		nalCopy := make([]byte, len(nalu))
+		copy(nalCopy, nalu)
+		m.currentAU = append(m.currentAU, nalCopy)
+	}
 	m.currentPTS = f.Timestamp
+}
+
+// splitAnnexBNALs breaks a buffer on 00 00 00 01 start codes and
+// returns each contained NAL without the delimiter. If the buffer
+// carries a single NAL (no delimiter inside), a one-element slice
+// pointing at the input is returned — no allocation.
+//
+// pion's codecs.H264Packet{IsAVC:false} emits STAP-A aggregations
+// as `NAL1 || 00 00 00 01 || NAL2 || 00 00 00 01 || NAL3`, i.e. the
+// delimiters sit BETWEEN NALs with no leading start code. This
+// matches what isKeyframe() in frames.go already assumes.
+func splitAnnexBNALs(buf []byte) [][]byte {
+	if len(buf) == 0 {
+		return nil
+	}
+	out := make([][]byte, 0, 3)
+	for offset := 0; offset < len(buf); {
+		rel := findStartCode(buf[offset:])
+		if rel < 0 {
+			out = append(out, buf[offset:])
+			break
+		}
+		if rel > 0 {
+			out = append(out, buf[offset:offset+rel])
+		}
+		offset += rel + 4
+	}
+	return out
 }
 
 func (m *HLSMuxer) flushCurrentAULocked() {
