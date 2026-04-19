@@ -88,7 +88,7 @@ export default async function AUP({ params }: { params: Promise<{ locale: string
             <h3 className="mt-2 font-headline text-3xl font-bold leading-tight">{a.dmcaTitle}</h3>
             <p className="mt-6 text-base leading-[1.7]">{a.dmcaBody1}</p>
             <p className="mt-4 text-base leading-[1.7]">{a.dmcaBody2}</p>
-            <div className="mt-10 grid grid-cols-2 gap-8">
+            <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-8">
               <div>
                 <span className="font-label text-xs text-tertiary">{a.dmcaAgentLabel}</span>
                 <p className="mt-2 font-mono text-sm text-accent">

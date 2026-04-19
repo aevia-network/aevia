@@ -67,7 +67,7 @@ export default async function Roadmap({
               key={section.label}
               className={isLast ? 'py-16' : 'py-16 border-b border-primary-dim/30'}
             >
-              <header className="grid grid-cols-[280px_1fr] gap-16 items-baseline">
+              <header className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 md:gap-16 items-baseline">
                 <div>
                   <span className="font-label text-xs text-tertiary tracking-[0.04em]">
                     {section.label}

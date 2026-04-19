@@ -116,7 +116,7 @@ export default async function SpecIndex({
           <p className="mb-6 font-label text-xs tracking-[0.04em] text-tertiary">
             {s.documentsLabel}
           </p>
-          <div className="grid grid-cols-2 gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
             {s.cards.map((card) => (
               <Link
                 key={card.slug}

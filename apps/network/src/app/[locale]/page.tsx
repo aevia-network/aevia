@@ -57,7 +57,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
             <Link
               key={portal.slug}
               href={localePath(locale, portal.href)}
-              className="group grid grid-cols-[280px_1fr] items-start gap-16 border-b border-primary-dim/30 py-12 transition-colors hover:bg-surface-low/40"
+              className="group grid grid-cols-1 md:grid-cols-[280px_1fr] items-start gap-4 md:gap-16 border-b border-primary-dim/30 py-8 md:py-12 transition-colors hover:bg-surface-low/40"
             >
               <div className="flex items-center gap-3 font-label text-sm">
                 <span className="text-tertiary">{portal.index}</span>
@@ -73,8 +73,8 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           ))}
         </section>
 
-        <section className="border-t border-primary-dim/30 py-[120px]">
-          <div className="grid grid-cols-[280px_1fr] gap-16">
+        <section className="border-t border-primary-dim/30 py-[80px] md:py-[120px]">
+          <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 md:gap-16">
             <div>
               <span className="font-label text-[13px] tracking-[0.04em] text-tertiary">
                 {landing.personas.heading}
@@ -84,7 +84,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
               <p className="max-w-[68ch] text-lg leading-[1.7] text-on-surface-variant">
                 {landing.personas.lead}
               </p>
-              <ul className="grid grid-cols-2 gap-x-12 gap-y-6">
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-6">
                 {landing.personas.items.map((persona) => (
                   <li key={persona.tag} className="flex flex-col gap-2">
                     <span className="font-label text-sm tracking-[0.02em] text-accent">
@@ -98,7 +98,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           </div>
         </section>
 
-        <section className="grid grid-cols-3 gap-12 border-t border-primary-dim/30 py-[120px]">
+        <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 border-t border-primary-dim/30 py-[80px] md:py-[120px]">
           {landing.roadmap.map((column) => (
             <div key={column.label} className="flex flex-col gap-4">
               <span className="font-label text-[13px] tracking-[0.04em] text-tertiary">

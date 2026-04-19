@@ -61,7 +61,7 @@ export default async function Providers({
         </section>
 
         <section className="mt-24">
-          <div className="mx-auto grid max-w-[92ch] grid-cols-3 gap-8">
+          <div className="mx-auto grid max-w-[92ch] grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
             {p.cards.map((card) => (
               <article
                 key={card.n}
