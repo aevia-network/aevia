@@ -96,16 +96,16 @@ export function Nav({
         </div>
       </nav>
 
-      {/* Mobile/tablet secondary nav row — horizontal scroll for page links */}
+      {/* Mobile/tablet secondary nav row — wraps onto multiple lines if needed */}
       <nav
         className="lg:hidden border-t border-outline-variant/40"
         aria-label="page navigation"
       >
-        <ul className="mx-auto flex max-w-[1440px] items-center gap-5 overflow-x-auto px-6 py-3 font-label text-sm">
+        <ul className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-5 gap-y-2 px-6 py-3 font-label text-sm">
           {items.map((item) => {
             const isActive = item.slug === active;
             return (
-              <li key={item.slug} className="shrink-0">
+              <li key={item.slug}>
                 <Link
                   href={localePath(locale, `/${item.slug}`)}
                   className={

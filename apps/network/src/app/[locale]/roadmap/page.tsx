@@ -81,16 +81,16 @@ export default async function Roadmap({
                 </p>
               </header>
 
-              <ol className="mt-10 ml-[296px] flex flex-col gap-8">
+              <ol className="mt-10 md:ml-[296px] flex flex-col gap-8">
                 {section.milestones.map((milestone) => (
                   <li
                     key={`${section.label}-${milestone.headline}`}
-                    className="flex items-baseline gap-6"
+                    className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-6"
                   >
-                    <span className="font-mono text-sm text-primary shrink-0 w-20">
+                    <span className="font-mono text-sm text-primary shrink-0 sm:w-20">
                       {milestone.date}
                     </span>
-                    <span className="text-outline-variant">·</span>
+                    <span className="hidden sm:inline text-outline-variant">·</span>
                     <div className="flex-1 max-w-[64ch]">
                       <p className="text-base text-accent font-medium">{milestone.headline}</p>
                       <p className="text-sm text-on-surface-variant mt-1 leading-[1.6]">
