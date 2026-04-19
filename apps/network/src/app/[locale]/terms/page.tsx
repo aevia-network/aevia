@@ -31,10 +31,10 @@ export default async function Terms({ params }: { params: Promise<{ locale: stri
   return (
     <>
       <Nav locale={locale} dict={dict} pathname={pathname} />
-      <main className="mx-auto max-w-[1440px] px-12">
-        <section className="mx-auto max-w-[72ch] pt-[200px]">
+      <main className="mx-auto max-w-[1440px] px-6 md:px-12">
+        <section className="mx-auto max-w-[72ch] pt-[120px] md:pt-[200px]">
           <span className="font-label text-xs text-tertiary tracking-[0.04em]">{t.eyebrow}</span>
-          <h1 className="mt-6 font-headline text-[96px] font-bold leading-[1.05] tracking-tight">
+          <h1 className="mt-6 font-headline text-5xl md:text-[96px] font-bold leading-[1.05] tracking-tight">
             {t.title}
           </h1>
           <p className="mt-8 max-w-[68ch] text-xl text-on-surface-variant leading-[1.7]">
