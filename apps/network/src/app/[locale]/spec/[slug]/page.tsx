@@ -84,11 +84,11 @@ export default async function SpecSlug({
   return (
     <>
       <Nav active="spec" locale={locale} dict={dict} pathname={pathname} />
-      <main className="mx-auto max-w-[1440px] px-12">
-        <div className="grid grid-cols-[280px_minmax(0,92ch)_1fr] gap-16 pt-[200px] pb-24">
+      <main className="mx-auto max-w-[1440px] px-6 md:px-12">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,92ch)_1fr] gap-8 lg:gap-16 pt-[120px] md:pt-[200px] pb-24">
           <aside
             data-print-hide="true"
-            className="sticky top-[100px] self-start flex flex-col gap-3"
+            className="hidden lg:sticky lg:top-[100px] lg:self-start lg:flex lg:flex-col lg:gap-3"
           >
             <span className="font-label text-xs text-tertiary tracking-[0.04em]">{r.onPage}</span>
             {content.toc.map((entry) => (
@@ -112,7 +112,7 @@ export default async function SpecSlug({
           <article>
             <header>
               <span className="font-label text-xs text-tertiary tracking-[0.04em]">{eyebrow}</span>
-              <h1 className="font-headline text-[72px] font-bold leading-[1.1] tracking-tight mt-4">
+              <h1 className="font-headline text-4xl md:text-5xl lg:text-[72px] font-bold leading-[1.1] tracking-tight mt-4">
                 {title}
               </h1>
               <p className="font-mono text-sm text-on-surface-variant mt-8">

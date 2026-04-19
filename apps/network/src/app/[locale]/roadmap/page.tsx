@@ -33,11 +33,11 @@ export default async function Roadmap({
   return (
     <>
       <Nav active="roadmap" locale={locale} dict={dict} pathname={pathname} />
-      <main className="mx-auto max-w-[1440px] px-12">
-        <section className="pt-[200px]">
+      <main className="mx-auto max-w-[1440px] px-6 md:px-12">
+        <section className="pt-[120px] md:pt-[200px]">
           <div className="max-w-[72ch] mx-auto">
             <span className="font-label text-xs text-tertiary tracking-[0.04em]">{r.eyebrow}</span>
-            <h1 className="font-headline text-[96px] font-bold leading-[1.05] tracking-tight mt-4">
+            <h1 className="font-headline text-5xl md:text-[96px] font-bold leading-[1.05] tracking-tight mt-4">
               {r.title}
             </h1>
             <p className="text-xl text-on-surface-variant leading-[1.7] max-w-[68ch] mt-8">

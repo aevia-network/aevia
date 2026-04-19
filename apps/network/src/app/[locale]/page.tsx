@@ -37,9 +37,9 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
     <>
       <Nav locale={locale} dict={dict} pathname={pathname} />
 
-      <main className="mx-auto max-w-[1440px] px-12">
-        <section className="pt-[200px] pb-[160px]">
-          <h1 className="max-w-[1200px] font-headline text-[96px] font-bold leading-[1.05] tracking-tight">
+      <main className="mx-auto max-w-[1440px] px-6 md:px-12">
+        <section className="pt-[120px] md:pt-[200px] pb-[80px] md:pb-[160px]">
+          <h1 className="max-w-[1200px] font-headline text-5xl md:text-[96px] font-bold leading-[1.05] tracking-tight">
             {landing.hero.titleBefore}
             <span className="inline-flex translate-y-3 items-center pl-1">
               <span className="pr-1">.</span>

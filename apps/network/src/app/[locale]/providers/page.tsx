@@ -37,11 +37,11 @@ export default async function Providers({
   return (
     <>
       <Nav locale={locale} dict={dict} pathname={pathname} />
-      <main className="mx-auto max-w-[1440px] px-12">
-        <section className="pt-[200px]">
+      <main className="mx-auto max-w-[1440px] px-6 md:px-12">
+        <section className="pt-[120px] md:pt-[200px]">
           <div className="mx-auto max-w-[72ch] text-center">
             <p className="font-label text-xs text-tertiary tracking-[0.04em]">{p.eyebrow}</p>
-            <h1 className="mt-6 font-headline text-[96px] font-bold leading-[1.05] tracking-tight text-accent">
+            <h1 className="mt-6 font-headline text-5xl md:text-[96px] font-bold leading-[1.05] tracking-tight text-accent">
               {p.title}
             </h1>
             <p className="mx-auto mt-8 max-w-[68ch] text-xl text-on-surface-variant leading-[1.7]">
