@@ -29,6 +29,7 @@ import { yamux } from '@chainsafe/libp2p-yamux';
 import { bootstrap } from '@libp2p/bootstrap';
 import { identify } from '@libp2p/identify';
 import { webSockets } from '@libp2p/websockets';
+import { multiaddr } from '@multiformats/multiaddr';
 import { type Libp2p, createLibp2p } from 'libp2p';
 
 export interface InitMeshOptions {
@@ -104,6 +105,25 @@ export async function initMesh(opts: InitMeshOptions): Promise<MeshHandle> {
   });
 
   await node.start();
+
+  // Fase 3.1 — explicit parallel dial of each bootstrap.
+  // The `bootstrap()` discovery module in libp2p v2 emits
+  // `peer:discovery` events but does NOT auto-dial by default in
+  // browser builds; the connection manager picks them up only when
+  // `start` policies kick in, which is racy for our use case. Dial
+  // eagerly to guarantee the WSS handshake happens in the first
+  // second of the session. Failures are logged and non-fatal — if
+  // all bootstraps fail, the node continues running (waiting for
+  // incoming peers) and SelectTopK degrades gracefully.
+  await Promise.allSettled(
+    opts.bootstraps.map(async (addr) => {
+      try {
+        await node.dial(multiaddr(addr) as never);
+      } catch (err) {
+        console.warn(`[p2p] dial bootstrap failed: ${addr}`, err);
+      }
+    }),
+  );
 
   // Track topic peers we've seen at least once. GossipSub raises
   // subscription-change events as peers join/leave; we count uniques.

@@ -279,13 +279,16 @@ export function PlayerScreen(props: PlayerScreenProps) {
           const s = handle.status();
           setMeshStats({ connected: s.connectedPeerCount, topicPeers: s.topicPeerCount });
         }, 2_000);
-        // Immediate first snapshot.
+        // Immediate first snapshot so the chip renders as soon as
+        // libp2p signals ready; the 2s poll refines it afterwards.
         const s0 = handle.status();
         setMeshStats({ connected: s0.connectedPeerCount, topicPeers: s0.topicPeerCount });
-      } catch {
-        // libp2p boot failure → silent. User sees no chip, no error
-        // overlay. 3.1 is opt-in experimental; hard failures here
-        // MUST NOT degrade the main viewing path.
+      } catch (err) {
+        // libp2p boot failures are easy to mask and hard to diagnose
+        // later in prod; log via console.error even in prod builds.
+        // Main viewing path is unaffected either way (WHEP / HLS own
+        // playback).
+        console.error('[p2p] init failed:', err);
       }
     })();
 
