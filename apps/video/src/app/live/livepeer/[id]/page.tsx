@@ -33,14 +33,25 @@ export default async function LivepeerViewerPage({
   const stream = await getLivepeerStream(id);
   if (!stream) notFound();
 
-  // Livepeer doesn't expose a Cloudflare-style `state` enum. We mirror
-  // `isActive` to PlayerScreen's existing live↔vod toggle so no
-  // per-backend branching leaks into the viewer.
+  // Livepeer's `isActive` flag lags behind the actual ingest by several
+  // seconds — when a creator hits "go live" and a viewer opens the page
+  // immediately after, the SSR fetch sees `isActive: false` even though
+  // packets are already flowing. Mirroring that into PlayerScreen as
+  // `state='disconnected'` would route the viewer into VOD mode and skip
+  // the WHEP attempt entirely (we pass `hlsUrl: null` for Livepeer because
+  // the recording is only available post-broadcast).
+  //
+  // Force `state='connected'` so PlayerScreen always tries WHEP first.
+  // The Livepeer playback endpoint accepts the SDP POST whether the stream
+  // is technically "active" or not — if there's nothing to play yet, the
+  // existing `onConnectionStateChange === 'failed'` branch surfaces the
+  // error. False positives ("connecting…" with no broadcaster) are a
+  // smaller UX regression than false negatives (signal exists but viewer
+  // sees a black screen with no retry path).
   const userTags = (stream as { userTags?: Record<string, string> }).userTags ?? {};
-  const isActive = (stream as { isActive?: boolean }).isActive ?? false;
-  const state = isActive ? 'connected' : 'disconnected';
   const creatorAddress = userTags.creatorAddress as `0x${string}` | undefined;
   const creatorDid = userTags.creatorDid;
+  const state = 'connected';
 
   return (
     <PlayerScreen
