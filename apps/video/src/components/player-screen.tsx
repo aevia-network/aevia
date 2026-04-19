@@ -152,6 +152,19 @@ export function PlayerScreen(props: PlayerScreenProps) {
     topicPeers: number;
   } | null>(null);
 
+  // Fase 3.2 — P2P chunk relay (HLS path only). When ?p2p=1 is set
+  // and hls.js is the active playback engine, p2p-media-loader wires
+  // a custom fragment loader that races WebRTC DataChannel transfers
+  // against origin HTTP. Real bytes — not just metadata — flow
+  // browser↔browser. The ratio counter is the honest metric we gate
+  // the PermanenceStrip L1 sage on (future 3.5).
+  const [chunkRelayStats, setChunkRelayStats] = useState<{
+    ratio: number;
+    peerCount: number;
+    bytesFromPeers: number;
+    bytesFromHttp: number;
+  } | null>(null);
+
   const [vodStatus, setVodStatus] = useState<VodStatus>('idle');
   const [vodError, setVodError] = useState<string | null>(null);
 
@@ -346,6 +359,41 @@ export function PlayerScreen(props: PlayerScreenProps) {
         manifestLoadingMaxRetry: 10,
         manifestLoadingRetryDelay: 1_500,
       });
+
+      // Fase 3.2 — wire P2P chunk relay BEFORE loadSource, when the
+      // viewer opted in via ?p2p=1 and we have a sessionId to scope
+      // the swarm by. The wireChunkRelay call imports libp2p-free
+      // p2p-media-loader + attaches a custom fragment loader to
+      // hls.js; once active, HLS segments race between HTTP (origin
+      // provider) and WebRTC DataChannel (other viewers). Import is
+      // dynamic so the bundle only lands when opt-in hits.
+      let chunkRelayCleanup: (() => void) | undefined;
+      if (
+        typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('p2p') === '1' &&
+        props.aeviaSessionId
+      ) {
+        void (async () => {
+          try {
+            const { wireChunkRelay } = await import('@/lib/p2p/chunk-relay');
+            const handle = wireChunkRelay({
+              sessionId: props.aeviaSessionId as string,
+              hls,
+              onStats: (s) =>
+                setChunkRelayStats({
+                  ratio: s.ratio,
+                  peerCount: s.peerCount,
+                  bytesFromPeers: s.bytesFromPeers,
+                  bytesFromHttp: s.bytesFromHttp,
+                }),
+            });
+            chunkRelayCleanup = handle.stop;
+          } catch (err) {
+            console.error('[p2p:chunk-relay] wire failed:', err);
+          }
+        })();
+      }
+
       hls.loadSource(props.aeviaHlsUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -359,6 +407,8 @@ export function PlayerScreen(props: PlayerScreenProps) {
         }
       });
       return () => {
+        chunkRelayCleanup?.();
+        setChunkRelayStats(null);
         hls.destroy();
       };
     }
@@ -535,6 +585,7 @@ export function PlayerScreen(props: PlayerScreenProps) {
           autoplayBlocked={autoplayBlocked}
           onUnmute={unmute}
           meshStats={meshStats}
+          chunkRelayStats={chunkRelayStats}
         />
 
         <div className="flex flex-col gap-6 px-4 pt-5">
@@ -701,6 +752,7 @@ function PlayerFrame({
   autoplayBlocked,
   onUnmute,
   meshStats,
+  chunkRelayStats,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   mode: ViewerMode;
@@ -710,6 +762,12 @@ function PlayerFrame({
   autoplayBlocked: boolean;
   onUnmute: () => void;
   meshStats: { connected: number; topicPeers: number } | null;
+  chunkRelayStats: {
+    ratio: number;
+    peerCount: number;
+    bytesFromPeers: number;
+    bytesFromHttp: number;
+  } | null;
 }) {
   const isLivePlaying = mode === 'live' && liveStatus === 'playing';
   const isVodPlaying = mode === 'vod' && vodStatus === 'playing';
@@ -752,6 +810,15 @@ function PlayerFrame({
       {meshStats && (
         <span className="absolute top-10 right-3 inline-flex items-center gap-1.5 rounded-sm bg-primary/30 px-2 py-1 font-label font-medium text-[10px] text-white lowercase">
           p2p · {meshStats.connected} conectado · {meshStats.topicPeers} na sala
+        </span>
+      )}
+
+      {/* Fase 3.2 — P2P chunk relay ratio. Real byte accounting from
+          p2p-media-loader: (bytesFromPeers / total). Honest metric,
+          independent from the Fase 3.1 gossipsub count. */}
+      {chunkRelayStats && chunkRelayStats.bytesFromPeers + chunkRelayStats.bytesFromHttp > 0 && (
+        <span className="absolute top-[68px] right-3 inline-flex items-center gap-1.5 rounded-sm bg-primary-dim/50 px-2 py-1 font-label font-medium text-[10px] text-white lowercase">
+          {Math.round(chunkRelayStats.ratio * 100)}% via peers · {chunkRelayStats.peerCount} pares
         </span>
       )}
 
