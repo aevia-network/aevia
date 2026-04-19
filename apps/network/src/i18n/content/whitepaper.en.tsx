@@ -388,8 +388,151 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s7-risk-score" className="py-16">
+      <section id="s7-inference-layer" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§7</span>
+        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+          Inference Layer
+        </h2>
+        <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
+          <p>
+            The protocol described in §1-§6 establishes how bytes are persisted, discovered, and
+            delivered. It does not describe how those bytes are <em>analyzed</em>. Yet every
+            production video platform depends on analysis: transcription, chapter detection,
+            editorial moderation classification, and automated clip generation. Outsourcing these
+            workloads to centralized AI APIs collapses unit economics and reintroduces the
+            platform dependency the rest of the protocol is designed to avoid. This section
+            describes how Aevia expresses analytical workloads as first-class protocol primitives
+            executed on the same provider-node mesh that serves video.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.1 Three node classes</h3>
+          <p>
+            Aevia providers are classified into three roles, any of which a single host MAY
+            fulfil simultaneously:
+          </p>
+          <ul className="ml-4 list-disc space-y-3 pl-4">
+            <li>
+              <strong>Storage Providers</strong> pin content-addressed bytes and serve HLS
+              segments on demand (described in §5 and §6).
+            </li>
+            <li>
+              <strong>Relay Nodes</strong> operate Circuit Relay v2 endpoints for NAT-bound peers
+              and WebTorrent-style trackers for browser-to-browser content exchange.
+            </li>
+            <li>
+              <strong>Inference Providers</strong> contribute GPU capacity to execute analytical
+              workloads against registered content, returning cryptographically attested results.
+            </li>
+          </ul>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.2 Bounty auction</h3>
+          <p>
+            Analytical workloads are expressed as bounties posted to the libp2p DHT. A bounty
+            commits to the target content CID, the workload type (transcription, scene detection,
+            moderation classification, arbitrary model inference), the maximum price in USDC the
+            submitter is willing to pay, and a deadline after which the bounty expires. Inference
+            Providers subscribed to the relevant DHT topic MAY claim a bounty by responding with
+            a commitment tuple signed by their node identity.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.3 Zero-copy execution</h3>
+          <p>
+            Video analytical workloads minimize bandwidth and storage overhead by design. An
+            Inference Provider retrieves only the chunks needed for the task — typically via the
+            same libp2p fetch path used by video viewers — and returns a compact structured
+            result (JSON with timestamps, scores, or extracted text) rather than re-rendering a
+            new video file. The result is content-addressed with its own CID, signed by the
+            provider, and submitted to the bounty contract for settlement. The protocol avoids
+            the double-storage problem that cripples centralized clipping pipelines.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.4 Hardware heterogeneity</h3>
+          <p>
+            The inference substrate is not homogeneous. Providers run a mix of consumer-grade
+            and datacenter-grade hardware, each with distinct quantization and throughput
+            characteristics. The protocol accommodates this explicitly through three hardware
+            tiers:
+          </p>
+          <ul className="ml-4 list-disc space-y-3 pl-4">
+            <li>
+              <strong>Blackwell tier</strong> (RTX 5090, B200, RTX PRO 6000) executes NVFP4-
+              native models at approximately 2× the FP8 throughput on the same GPU, with
+              dual-level microscaling applied inside the fifth-generation Tensor Core. This tier
+              serves latency-sensitive workloads preferentially.
+            </li>
+            <li>
+              <strong>Ada Lovelace and Hopper tier</strong> (RTX 4090, H100, H200) executes FP8
+              models via fourth-generation Tensor Cores. NVFP4 is not hardware-supported on this
+              tier; software emulation yields no throughput gain.
+            </li>
+            <li>
+              <strong>Ampere tier</strong> (RTX 3090, A5000) executes INT4 weights via GPTQ or
+              AWQ quantization paths. Typical accuracy degradation is 1-3% relative to NVFP4/FP8
+              but the tier remains economically viable for latency-tolerant workloads.
+            </li>
+          </ul>
+          <p>
+            The bounty router uses per-provider capability attestations (reported via{' '}
+            <span className="font-mono">/healthz</span>) to match workloads to the fastest tier
+            that satisfies the submitter&apos;s latency and accuracy constraints.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.5 Supply substrate</h3>
+          <p>
+            Inference Providers draw capacity from heterogeneous substrates: dedicated bare-metal
+            nodes, commodity GPU marketplaces (Salad Cloud, rent.ai, Akash Network), and cloud
+            instances. The protocol is supply-agnostic by design — a Proof-of-Relay receipt
+            commits the same cryptographic attestation regardless of where the GPU physically
+            sits. Providers optimizing for yield MAY dynamically relocate workloads across
+            substrates based on real-time price signals.
+          </p>
+          <p>
+            As of early 2026, public GPU marketplaces expose RTX 5090-class hardware at
+            approximately $0.25 to $0.35 per GPU-hour, with spot spreads exceeding 400× within a
+            single marketplace. Aevia bounty auctions calibrate base prices against a weighted
+            aggregate of public marketplace medians, read from an on-chain pricing oracle every
+            epoch. This keeps bounties competitive with commodity GPU rental markets while
+            sustaining a workload-specific premium that compensates providers for sovereignty-
+            compatible execution, signed output attestation, and non-custodial USDC settlement.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">
+            7.6 Reference implementation
+          </h3>
+          <p>
+            Aevia&apos;s reference inference runtime is{' '}
+            <a
+              href="https://github.com/Leeaandrob/neurogrid"
+              className="text-primary underline"
+              target="_blank"
+              rel="noopener"
+            >
+              NeuroGrid
+            </a>{' '}
+            — a Go and CUDA distributed inference engine sharing the libp2p substrate used by
+            the Aevia provider-node mesh. NeuroGrid implements BF16-native compute, paged KV
+            caching, continuous batching, and pipeline-parallel inference across heterogeneous
+            GPU fleets. The license grant from NeuroGrid&apos;s copyright holder to Aevia LLC,
+            authorising commercial incorporation of NeuroGrid into Aevia components, is recorded
+            at <span className="font-mono">LICENSES/neurogrid-aevia-grant.md</span>.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">
+            7.7 General-purpose compute substrate
+          </h3>
+          <p>
+            The inference layer&apos;s primitives — bounty auction, cryptographically verified
+            execution, on-chain settlement — are workload-agnostic by construction. The first
+            application is automated clipping and moderation for the video stack described in
+            §1-§6. The same primitives accept arbitrary inference workloads: retrieval-augmented
+            generation pipelines, agentic model orchestration, general-purpose language model
+            inference, and multimodal vision tasks.
+          </p>
+          <p>
+            This property is deliberate. The Aevia protocol does not depend on the video
+            application for its economic viability; it depends on the existence of any
+            analytical workload worth running on a verified decentralised GPU mesh. The
+            network&apos;s utility scales with the set of workloads, not with any single
+            vertical.
+          </p>
+        </div>
+      </section>
+
+      <section id="s8-risk-score" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§8</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Risk Score
         </h2>
@@ -466,8 +609,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s8-governance" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§8</span>
+      <section id="s9-governance" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§9</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Governance
         </h2>
@@ -513,8 +656,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s9-privacy-model" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§9</span>
+      <section id="s10-privacy-model" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§10</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Privacy Model
         </h2>
@@ -563,8 +706,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s10-adversarial-analysis" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§10</span>
+      <section id="s11-adversarial-analysis" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§11</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Adversarial Analysis
         </h2>
@@ -631,8 +774,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s11-simplified-verification" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§11</span>
+      <section id="s12-simplified-verification" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§12</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Simplified Verification
         </h2>
@@ -688,8 +831,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s12-economic-model" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§12</span>
+      <section id="s13-economic-model" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§13</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Economic Model
         </h2>
@@ -758,8 +901,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s13-related-work" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§13</span>
+      <section id="s14-related-work" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§14</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Related Work
         </h2>
@@ -810,8 +953,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s14-conclusion" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§14</span>
+      <section id="s15-conclusion" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§15</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Conclusion
         </h2>

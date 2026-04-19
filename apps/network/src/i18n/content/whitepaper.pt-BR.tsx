@@ -391,8 +391,161 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s7-risk-score" className="py-16">
+      <section id="s7-inference-layer" className="py-16">
         <span className="font-label text-xs tracking-[0.04em] text-tertiary">§7</span>
+        <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
+          Camada de Inferência
+        </h2>
+        <div className="mt-8 flex flex-col gap-5 text-lg leading-[1.7]">
+          <p>
+            O protocolo descrito em §1-§6 estabelece como os bytes são persistidos, descobertos e
+            entregues. Não descreve como esses bytes são <em>analisados</em>. Ainda assim toda
+            plataforma de vídeo em produção depende de análise: transcrição, detecção de
+            capítulos, classificação editorial de moderação e geração automática de clipes.
+            Terceirizar essas cargas a APIs de IA centralizadas colapsa o unit economics e
+            reintroduz a dependência de plataforma que o resto do protocolo foi desenhado para
+            evitar. Esta seção descreve como a Aevia expressa cargas analíticas como primitivos
+            de primeira classe do protocolo, executados na mesma malha de provider-nodes que
+            serve vídeo.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">
+            7.1 Três classes de nó
+          </h3>
+          <p>
+            Providers Aevia são classificados em três papéis, qualquer um dos quais um único
+            host PODE assumir simultaneamente:
+          </p>
+          <ul className="ml-4 list-disc space-y-3 pl-4">
+            <li>
+              <strong>Storage Providers</strong> pinam bytes endereçados por conteúdo e servem
+              segmentos HLS sob demanda (descrito em §5 e §6).
+            </li>
+            <li>
+              <strong>Relay Nodes</strong> operam endpoints Circuit Relay v2 para peers atrás de
+              NAT e trackers estilo WebTorrent para troca de conteúdo browser-to-browser.
+            </li>
+            <li>
+              <strong>Inference Providers</strong> contribuem com capacidade de GPU para
+              executar cargas analíticas sobre conteúdo registrado, retornando resultados
+              criptograficamente atestados.
+            </li>
+          </ul>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.2 Leilão de bounty</h3>
+          <p>
+            Cargas analíticas são expressas como bounties postadas no DHT libp2p. Um bounty
+            compromete-se com o CID alvo do conteúdo, o tipo de carga (transcrição, detecção de
+            cena, classificação de moderação, inferência arbitrária de modelo), o preço máximo
+            em USDC que o submitter está disposto a pagar, e um deadline após o qual o bounty
+            expira. Inference Providers subscritos ao tópico DHT relevante PODEM reivindicar um
+            bounty respondendo com uma tupla de compromisso assinada pela identidade do seu nó.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.3 Execução zero-copy</h3>
+          <p>
+            Cargas analíticas de vídeo minimizam overhead de banda e armazenamento por design.
+            Um Inference Provider recupera apenas os chunks necessários para a tarefa —
+            tipicamente pelo mesmo caminho libp2p usado pelos viewers — e retorna um resultado
+            estruturado compacto (JSON com timestamps, scores ou texto extraído) em vez de
+            re-renderizar um novo arquivo de vídeo. O resultado é endereçado por conteúdo com
+            seu próprio CID, assinado pelo provider e submetido ao contrato de bounty para
+            settlement. O protocolo evita o problema de armazenamento duplo que compromete
+            pipelines de clipping centralizados.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">
+            7.4 Heterogeneidade de hardware
+          </h3>
+          <p>
+            O substrato de inferência não é homogêneo. Providers rodam uma combinação de
+            hardware consumer-grade e datacenter-grade, cada um com características distintas de
+            quantização e throughput. O protocolo acomoda isso explicitamente através de três
+            tiers de hardware:
+          </p>
+          <ul className="ml-4 list-disc space-y-3 pl-4">
+            <li>
+              <strong>Tier Blackwell</strong> (RTX 5090, B200, RTX PRO 6000) executa modelos
+              NVFP4 nativamente a aproximadamente 2× o throughput FP8 na mesma GPU, com
+              microscaling de dois níveis aplicado dentro do Tensor Core de quinta geração.
+              Este tier serve cargas sensíveis a latência preferencialmente.
+            </li>
+            <li>
+              <strong>Tier Ada Lovelace e Hopper</strong> (RTX 4090, H100, H200) executa modelos
+              FP8 via Tensor Cores de quarta geração. NVFP4 não tem suporte em hardware nesse
+              tier; emulação em software não traz ganho de throughput.
+            </li>
+            <li>
+              <strong>Tier Ampere</strong> (RTX 3090, A5000) executa weights INT4 via caminhos
+              de quantização GPTQ ou AWQ. Degradação típica de acurácia é 1-3% em relação a
+              NVFP4/FP8, mas o tier permanece economicamente viável para cargas tolerantes a
+              latência.
+            </li>
+          </ul>
+          <p>
+            O bounty router usa atestações de capacidade por provider (reportadas via{' '}
+            <span className="font-mono">/healthz</span>) para casar cargas ao tier mais rápido
+            que satisfaça as restrições de latência e acurácia do submitter.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">7.5 Substrato de supply</h3>
+          <p>
+            Inference Providers extraem capacidade de substratos heterogêneos: nodes dedicados
+            em bare-metal, marketplaces de GPU commodity (Salad Cloud, rent.ai, Akash Network)
+            e instâncias cloud. O protocolo é supply-agnóstico por design — um recibo de
+            Proof-of-Relay compromete a mesma atestação criptográfica independentemente de onde
+            a GPU fisicamente reside. Providers otimizando rendimento PODEM realocar cargas
+            dinamicamente entre substratos baseando-se em sinais de preço em tempo real.
+          </p>
+          <p>
+            No início de 2026, marketplaces públicos de GPU expõem hardware da classe RTX 5090
+            a aproximadamente $0.25 a $0.35 por GPU-hora, com spreads de spot excedendo 400×
+            dentro de um único marketplace. Leilões de bounty Aevia calibram preços-base contra
+            um agregado ponderado das medianas dos marketplaces públicos, lido de um oracle de
+            preços on-chain a cada epoch. Isso mantém os bounties competitivos com os mercados
+            commodity de aluguel de GPU, ao mesmo tempo que sustenta um prêmio específico por
+            carga que compensa providers pela execução compatível com soberania, atestação
+            assinada da saída e settlement em USDC não-custodial.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">
+            7.6 Implementação de referência
+          </h3>
+          <p>
+            O runtime de inferência de referência da Aevia é o{' '}
+            <a
+              href="https://github.com/Leeaandrob/neurogrid"
+              className="text-primary underline"
+              target="_blank"
+              rel="noopener"
+            >
+              NeuroGrid
+            </a>{' '}
+            — um engine de inferência distribuída em Go e CUDA compartilhando o substrato libp2p
+            usado pela malha de provider-nodes da Aevia. O NeuroGrid implementa compute BF16
+            nativo, paged KV caching, continuous batching e inferência pipeline-parallel em
+            frotas heterogêneas de GPU. O grant de licença do detentor do copyright do
+            NeuroGrid para a Aevia LLC, autorizando a incorporação comercial do NeuroGrid em
+            componentes da Aevia, está registrado em{' '}
+            <span className="font-mono">LICENSES/neurogrid-aevia-grant.md</span>.
+          </p>
+          <h3 className="mt-6 font-headline text-2xl font-semibold">
+            7.7 Substrato de compute de propósito geral
+          </h3>
+          <p>
+            Os primitivos da camada de inferência — leilão de bounty, execução
+            criptograficamente verificada, settlement on-chain — são workload-agnósticos por
+            construção. A primeira aplicação é clipping automatizado e moderação para o stack
+            de vídeo descrito em §1-§6. Os mesmos primitivos aceitam cargas arbitrárias de
+            inferência: pipelines de retrieval-augmented generation, orquestração de modelos
+            agentic, inferência de modelos de linguagem de propósito geral e tarefas
+            multimodais de visão.
+          </p>
+          <p>
+            Essa propriedade é deliberada. O protocolo Aevia não depende da aplicação de vídeo
+            para sua viabilidade econômica; depende da existência de qualquer carga analítica
+            que valha a pena rodar numa malha verificada descentralizada de GPU. A utilidade da
+            rede escala com o conjunto de cargas, não com qualquer vertical única.
+          </p>
+        </div>
+      </section>
+
+      <section id="s8-risk-score" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§8</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Risk Score
         </h2>
@@ -470,8 +623,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s8-governance" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§8</span>
+      <section id="s9-governance" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§9</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Governança
         </h2>
@@ -517,8 +670,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s9-privacy-model" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§9</span>
+      <section id="s10-privacy-model" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§10</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Modelo de Privacidade
         </h2>
@@ -566,8 +719,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s10-adversarial-analysis" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§10</span>
+      <section id="s11-adversarial-analysis" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§11</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Análise Adversarial
         </h2>
@@ -633,8 +786,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s11-simplified-verification" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§11</span>
+      <section id="s12-simplified-verification" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§12</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Verificação Simplificada
         </h2>
@@ -691,8 +844,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s12-economic-model" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§12</span>
+      <section id="s13-economic-model" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§13</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Modelo Econômico
         </h2>
@@ -760,8 +913,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s13-related-work" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§13</span>
+      <section id="s14-related-work" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§14</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Trabalhos Relacionados
         </h2>
@@ -814,8 +967,8 @@ export function WhitepaperBody(): ReactNode {
         </div>
       </section>
 
-      <section id="s14-conclusion" className="py-16">
-        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§14</span>
+      <section id="s15-conclusion" className="py-16">
+        <span className="font-label text-xs tracking-[0.04em] text-tertiary">§15</span>
         <h2 className="mt-2 font-headline text-5xl font-bold leading-tight tracking-tight">
           Conclusão
         </h2>
