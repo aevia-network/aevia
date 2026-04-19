@@ -50,3 +50,60 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
     return DEFAULT_ICE_SERVERS;
   }
 }
+
+/**
+ * Inspect the active ICE candidate-pair on a connected `RTCPeerConnection`
+ * to detect whether TURN relay was needed for this peer. Logs once with a
+ * structured payload and, when relay was the path, an extra plain-language
+ * line that's easy to grep in deploy logs:
+ *   `[<tag>:turn] viewer connected via TURN relay (direct path failed; ...)`
+ *
+ * Three outcomes per local `candidateType`:
+ *   - `host` / `srflx` / `prflx` — direct connectivity, TURN not used
+ *   - `relay`                    — TURN saved the session (Vivo 4G class)
+ *   - undefined / no pair        — race during teardown; we log nothing
+ *
+ * Production logs are intentional and uncostly (one log per session). The
+ * relay-vs-direct ratio over time is the metric that surfaces the
+ * universal-network gap Cloudflare Stream beta alone doesn't close.
+ *
+ * Call from `connectionstatechange` once `pc.connectionState === 'connected'`.
+ */
+export async function inspectCandidatePair(
+  pc: RTCPeerConnection,
+  tag: 'whip' | 'whep',
+): Promise<void> {
+  try {
+    const stats = await pc.getStats();
+    let pair: RTCIceCandidatePairStats | undefined;
+    for (const report of stats.values()) {
+      if (report.type !== 'candidate-pair') continue;
+      const cp = report as RTCIceCandidatePairStats;
+      if (cp.state === 'succeeded' && cp.nominated) {
+        pair = cp;
+        break;
+      }
+    }
+    if (!pair) return;
+
+    // RTCIceCandidateStats isn't in the default DOM lib on every TS version;
+    // its only field we care about is `candidateType` ('host' | 'srflx' |
+    // 'prflx' | 'relay'), so a structural cast keeps this portable.
+    const local = stats.get(pair.localCandidateId) as { candidateType?: string } | undefined;
+    const remote = stats.get(pair.remoteCandidateId) as { candidateType?: string } | undefined;
+    const localType = local?.candidateType ?? 'unknown';
+    const remoteType = remote?.candidateType ?? 'unknown';
+    const usedTurn = localType === 'relay' || remoteType === 'relay';
+
+    // biome-ignore lint/suspicious/noConsoleLog: intentional telemetry — see jsdoc
+    console.log(`[${tag}:ice]`, { localType, remoteType, usedTurn });
+    if (usedTurn) {
+      // biome-ignore lint/suspicious/noConsoleLog: intentional telemetry — see jsdoc
+      console.log(
+        `[${tag}:turn] viewer connected via TURN relay (direct path failed; relay saved this session)`,
+      );
+    }
+  } catch {
+    // getStats can briefly reject during teardown; nothing to do.
+  }
+}

@@ -4,7 +4,7 @@
  * Spec: https://datatracker.ietf.org/doc/draft-ietf-wish-whip/
  */
 
-import { DEFAULT_ICE_SERVERS, waitForIceGatheringComplete } from './ice';
+import { DEFAULT_ICE_SERVERS, inspectCandidatePair, waitForIceGatheringComplete } from './ice';
 
 export interface WhipSession {
   pc: RTCPeerConnection;
@@ -85,11 +85,20 @@ const DESKTOP_LAYERS: SimulcastLayer[] = [
   { rid: 'f', maxBitrate: 2_000_000, scaleResolutionDownBy: 1 }, // ~1080p
 ];
 
+// Mobile ceiling raised after 2026-04-18 empirical test: iPhone broadcaster
+// + iPhone viewer both on Vivo 4G held a stable WHEP session via TURN relay
+// at the previous 800 Kbps total cap (q+h only). Modern Brazilian carriers
+// (Vivo, Tim, Claro) consistently sustain 1.2-2 Mbps uplinks on 4G+/5G when
+// signal is reasonable — capping below that left quality on the table.
+//
+// We give mobile the full 3-layer profile capped at 1.5 Mbps top layer (vs
+// 2 Mbps on desktop) to keep some headroom for jitter; WebRTC's bandwidth
+// estimator drops the top layer automatically when the uplink can't sustain
+// it, so worst case we degrade gracefully back to ~1 Mbps total via h+q.
 const MOBILE_LAYERS: SimulcastLayer[] = [
-  { rid: 'q', maxBitrate: 200_000, scaleResolutionDownBy: 4 }, // ~360p
-  { rid: 'h', maxBitrate: 600_000, scaleResolutionDownBy: 2 }, // ~720p
-  // No `f` on mobile — uplink budget on 4G/5G can't afford the 2 Mbps top
-  // layer reliably. Viewers still get adaptive playback between the two.
+  { rid: 'q', maxBitrate: 250_000, scaleResolutionDownBy: 4 }, // ~360p
+  { rid: 'h', maxBitrate: 750_000, scaleResolutionDownBy: 2 }, // ~720p
+  { rid: 'f', maxBitrate: 1_500_000, scaleResolutionDownBy: 1 }, // ~1080p (drops first under congestion)
 ];
 
 /**
@@ -114,11 +123,15 @@ export async function publishWhip(opts: WhipOptions): Promise<WhipSession> {
     bundlePolicy: 'max-bundle',
   });
 
-  if (opts.onConnectionStateChange) {
-    pc.addEventListener('connectionstatechange', () => {
-      opts.onConnectionStateChange?.(pc.connectionState);
-    });
-  }
+  let inspected = false;
+  pc.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'connected' && !inspected) {
+      inspected = true;
+      // Telemetry: did TURN relay save this publisher? See ice.ts jsdoc.
+      void inspectCandidatePair(pc, 'whip');
+    }
+    opts.onConnectionStateChange?.(pc.connectionState);
+  });
 
   const layers = opts.simulcastLayers ?? defaultSimulcastLayers();
   const fallbackCap = opts.maxVideoBitrate ?? DEFAULT_MAX_VIDEO_BITRATE;

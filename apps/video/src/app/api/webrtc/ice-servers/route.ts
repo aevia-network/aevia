@@ -1,7 +1,32 @@
 import { getRealtimeTurnEnv } from '@/lib/env';
+import { readAeviaSession } from '@aevia/auth/server';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
+
+const STUN_ONLY_ICE_SERVERS = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.l.google.com:19302' },
+] as const;
+
+/**
+ * Return STUN-only credentials with an explicit reason, so callers can still
+ * attempt direct/STUN connectivity and ops can grep the relay tag in logs to
+ * count abuse-rejection vs. config-failure events.
+ */
+function stunOnly(reason: 'unauthenticated' | 'unavailable' | 'mint-failed', maxAge: number) {
+  return NextResponse.json(
+    { iceServers: STUN_ONLY_ICE_SERVERS, relay: reason },
+    {
+      status: 200,
+      headers: {
+        // STUN list is static, but cache short so a flip in env or auth state
+        // is reflected within seconds — never minutes.
+        'cache-control': `public, max-age=${maxAge}`,
+      },
+    },
+  );
+}
 
 /**
  * Mint short-lived ICE server credentials backed by Cloudflare Realtime TURN.
@@ -19,35 +44,27 @@ export const runtime = 'edge';
  * Stream-included Realtime quota; standalone usage is $0.05/GB outbound after
  * the 1 TB/month Realtime free tier.
  *
- * Auth: this endpoint is public on purpose — credentials are scoped to a
- * single TTL window (default 1 h) and bound to the TURN key, so leaking one
- * minted set is bounded. To prevent abuse (random callers minting credentials
- * for non-Aevia traffic) we will add Privy-session gating + rate-limit at the
- * Cloudflare edge in a follow-up; out of scope for the immediate Vivo 4G fix.
+ * Auth: requires a valid Aevia session (Privy id-token cookie or dev-bypass).
+ * TURN credentials are short-lived and bound to the configured TURN key, but
+ * still represent paid relay bandwidth — gating prevents random callers from
+ * minting creds for non-Aevia traffic. Unauthenticated callers receive a
+ * STUN-only payload so the public viewer surface can still attempt direct
+ * connectivity, while signed-in publishers/viewers get the full relay set.
  */
 export async function GET() {
+  const session = await readAeviaSession();
+  if (!session) {
+    // Don't expose paid TURN bandwidth to anonymous callers. STUN-only is
+    // safe to ship publicly — no credential leak, no per-byte cost.
+    return stunOnly('unauthenticated', 60);
+  }
+
   const turn = getRealtimeTurnEnv();
   if (!turn) {
     // Soft fallback — without TURN config, return STUN-only so the client
     // can still attempt direct connectivity. This is what the player has
     // been doing all along; the route just acknowledges the gap explicitly.
-    return NextResponse.json(
-      {
-        iceServers: [
-          { urls: 'stun:stun.cloudflare.com:3478' },
-          { urls: 'stun:stun.l.google.com:19302' },
-        ],
-        relay: 'unavailable',
-      },
-      {
-        status: 200,
-        headers: {
-          // Short cache — STUN list is static, but we want the server to be
-          // able to flip to relay-on the moment the env flips.
-          'cache-control': 'public, max-age=60',
-        },
-      },
-    );
+    return stunOnly('unavailable', 60);
   }
 
   // Cloudflare Realtime TURN credential mint endpoint.
@@ -71,16 +88,7 @@ export async function GET() {
     // Don't crash the page — surface STUN-only so playback still tries direct
     // connectivity. Log so ops can spot a misconfigured/expired TURN key.
     console.error(`[ice-servers] CF TURN mint failed: ${upstream.status} ${body.slice(0, 200)}`);
-    return NextResponse.json(
-      {
-        iceServers: [
-          { urls: 'stun:stun.cloudflare.com:3478' },
-          { urls: 'stun:stun.l.google.com:19302' },
-        ],
-        relay: 'mint-failed',
-      },
-      { status: 200, headers: { 'cache-control': 'no-store' } },
-    );
+    return stunOnly('mint-failed', 0);
   }
 
   const payload = (await upstream.json()) as {
@@ -99,7 +107,8 @@ export async function GET() {
       headers: {
         // Cache for slightly less than the credential TTL so a fresh call
         // never returns expired creds. ttl=3600 → cache 3000s → first stale
-        // re-validation 10 min before expiry.
+        // re-validation 10 min before expiry. `private` so the CF edge cache
+        // doesn't leak one publisher's creds to another caller.
         'cache-control': `private, max-age=${Math.max(60, ttl - 600)}`,
       },
     },
