@@ -40,6 +40,8 @@
     "lucide-react": "^0.468.0",
     "multiformats": "^13.4.2",
     "next": "catalog:",
+    "p2p-media-loader-core": "^2.2.2",
+    "p2p-media-loader-hlsjs": "^2.2.2",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwind-merge": "catalog:",
