@@ -142,6 +142,17 @@ const DefaultProviderLimit = 20
 // every 6h to give 4 retries before a record would disappear.
 const DefaultRefreshPeriod = 6 * time.Hour
 
+// DefaultSessionReannouncePeriod is how often a live-session re-announces
+// its sessionCID while the origin (or mirror) is alive. 10 minutes is
+// deliberately shorter than DefaultRefreshPeriod for pinned content:
+// live-session records MUST evaporate quickly when the origin dies so
+// viewers don't waste dial budget on stale peers. The provider record's
+// ~24h TTL means that with a 10-minute refresh, after origin death the
+// record survives roughly 20 minutes (one missed refresh + the natural
+// TTL that hasn't been renewed). Kad-dht internally expires based on
+// `provide_validity`; the 10-minute pace is the external guarantee.
+const DefaultSessionReannouncePeriod = 10 * time.Minute
+
 // ProvideAll announces every CID in cids. Returns the first error if any;
 // subsequent CIDs are still attempted so a single bad entry doesn't block
 // the rest.
@@ -171,6 +182,93 @@ func (d *DHT) RefreshLoop(ctx context.Context, cids []string, period time.Durati
 			return
 		case <-ticker.C:
 			_ = d.ProvideAll(ctx, cids)
+		}
+	}
+}
+
+// SessionAnnounceEvent identifies a lifecycle moment in a session's
+// DHT announcement loop — used by callers that want structured logs
+// without reaching into the DHT internals.
+type SessionAnnounceEvent int
+
+const (
+	// SessionAnnounceInitial fires on the first successful Provide call
+	// at session start. Callers emit the "session_announced" log event.
+	SessionAnnounceInitial SessionAnnounceEvent = iota
+	// SessionAnnounceRefresh fires on every periodic re-Provide while
+	// the session is alive. Maps to "session_announce_refresh".
+	SessionAnnounceRefresh
+	// SessionAnnounceFailed fires when a Provide call returns an error.
+	// Loop keeps running; a transient DHT hiccup shouldn't kill the
+	// announcement cadence. Maps to "session_announce_failed".
+	SessionAnnounceFailed
+	// SessionAnnounceExpired fires exactly once when the loop exits
+	// (session closed, context cancelled). After this no more
+	// re-announcements happen for this CID and the kad-dht TTL takes
+	// over. Maps to "session_announce_expired".
+	SessionAnnounceExpired
+)
+
+// SessionAnnounceLoop announces cidStr into the DHT at session start
+// and re-announces every period while `done` is still open. Returns
+// immediately after `done` closes (session ended) or ctx cancels.
+//
+// The loop spawns one goroutine per session and is the canonical entry
+// point for both origin WHIP sessions (main.go whipSrv.OnSession) and
+// mirror sessions (main.go mirrorSrv.OnSession).
+//
+// Passing period <= 0 uses DefaultSessionReannouncePeriod.
+// cb is optional — receives every lifecycle event. Errors from cb are
+// ignored (callback should swallow its own failures).
+func (d *DHT) SessionAnnounceLoop(
+	ctx context.Context,
+	done <-chan struct{},
+	cidStr string,
+	period time.Duration,
+	cb func(event SessionAnnounceEvent, err error),
+) {
+	if period <= 0 {
+		period = DefaultSessionReannouncePeriod
+	}
+	// Initial synchronous announce so the first viewer resolving the
+	// sessionCID sees us without waiting one period. Failure is logged
+	// by cb but does NOT abort — the periodic loop keeps retrying.
+	initialCtx, initialCancel := context.WithTimeout(ctx, 30*time.Second)
+	err := d.Provide(initialCtx, cidStr)
+	initialCancel()
+	if cb != nil {
+		if err != nil {
+			cb(SessionAnnounceFailed, err)
+		} else {
+			cb(SessionAnnounceInitial, nil)
+		}
+	}
+
+	defer func() {
+		if cb != nil {
+			cb(SessionAnnounceExpired, nil)
+		}
+	}()
+
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			return
+		case <-ticker.C:
+			reCtx, reCancel := context.WithTimeout(ctx, 30*time.Second)
+			err := d.Provide(reCtx, cidStr)
+			reCancel()
+			if cb != nil {
+				if err != nil {
+					cb(SessionAnnounceFailed, err)
+				} else {
+					cb(SessionAnnounceRefresh, nil)
+				}
+			}
 		}
 	}
 }
