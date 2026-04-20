@@ -386,9 +386,15 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		// browsers omit them from the RTP stream so without this the
 		// MPEG-TS segments reference a PPS the decoder never saw.
 		sps, pps := sess.VideoSPSPPS()
-		if len(sps) == 0 || len(pps) == 0 {
-			whipLog.Warn().Str("event", "live_muxer_missing_sprop").Str("session_id", sess.ID).Msg("WHIP offer did not expose sprop-parameter-sets — HLS segments may fail strict decode")
+		if len(sps) > 0 && len(pps) > 0 {
+			whipLog.Info().Str("event", "live_muxer_sprop_loaded").Int("sps_bytes", len(sps)).Int("pps_bytes", len(pps)).Str("session_id", sess.ID).Msg("SDP sprop-parameter-sets extracted")
 		}
+		// Chrome does NOT ship sprop-parameter-sets in the SDP under
+		// packetization-mode=1 — it emits SPS+PPS inline via STAP-A
+		// with every IDR instead (evidence gathered 2026-04-19 via
+		// nal_census: 20 IDR ↔ 20 SPS ↔ 20 PPS). HLSMuxer's inline
+		// capture path handles that without needing sprop, so the
+		// absence is informational not a warning.
 		muxer, err := whip.NewHLSMuxer(sess.ID, sps, pps)
 		if err != nil {
 			whipLog.Error().Err(err).Str("event", "live_muxer_init_failed").Str("session_id", sess.ID).Msg("live muxer init failed")

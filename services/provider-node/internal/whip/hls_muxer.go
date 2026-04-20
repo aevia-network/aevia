@@ -41,11 +41,17 @@ type HLSMuxer struct {
 	videoTrk  *gohlslib.Track
 	sessionID string
 
-	// spsCache / ppsCache carry the H.264 parameter sets extracted
-	// from the WHIP offer's sprop-parameter-sets. Browser encoders
-	// ship them OUT-OF-BAND via SDP and omit inline NALs — so we
-	// inject them ourselves ahead of every IDR AU to keep the
-	// MPEG-TS / fmp4 output self-decodable.
+	// spsCache / ppsCache carry the H.264 parameter sets — sourced
+	// from the WHIP offer's sprop-parameter-sets at construction, OR
+	// opportunistically captured from inline STAP-A aggregations in
+	// the RTP stream. Injected ahead of every IDR AU whose NALs
+	// don't already carry them, so MPEG-TS / fmp4 output is
+	// self-decodable by strict decoders (ffprobe, VLC, ffplay).
+	// Evidence gathered 2026-04-19: Chrome WebRTC does emit SPS+PPS
+	// inline alongside each IDR via STAP-A under packetization-mode=1
+	// (nal_census proved 20 IDR ↔ 20 SPS ↔ 20 PPS 1:1), so this cache
+	// primarily serves robustness — a future encoder that ships
+	// params once at start and never again would still work.
 	spsCache []byte
 	ppsCache []byte
 
@@ -184,13 +190,13 @@ func (m *HLSMuxer) flushCurrentAULocked() {
 	if len(m.currentAU) == 0 {
 		return
 	}
-	// Scan the AU for IDR + parameter-set presence. Browser encoders
-	// strip SPS/PPS from the RTP stream and only ship them via SDP's
-	// sprop-parameter-sets — leaving MPEG-TS segments with IDRs that
-	// reference a PPS the decoder never received. Inject the cached
-	// SDP-derived SPS/PPS ahead of every IDR AU so gohlslib's codec
-	// params pipeline can capture them and every segment bootstraps
-	// independent decode.
+	// Scan the AU twice:
+	//  (1) classify NAL types + opportunistically capture inline
+	//      SPS/PPS. Chrome WebRTC aggregates SPS+PPS+IDR via STAP-A
+	//      on the first keyframe but may omit params on later IDRs —
+	//      cache whatever we see so subsequent IDRs inherit them.
+	//  (2) detect IDR-without-params → inject cached pair so the
+	//      segment is self-decodable.
 	hasIDR, hasSPS, hasPPS := false, false, false
 	for _, nal := range m.currentAU {
 		if len(nal) == 0 {
@@ -201,8 +207,14 @@ func (m *HLSMuxer) flushCurrentAULocked() {
 			hasIDR = true
 		case 7:
 			hasSPS = true
+			if len(m.spsCache) == 0 {
+				m.spsCache = append(m.spsCache[:0], nal...)
+			}
 		case 8:
 			hasPPS = true
+			if len(m.ppsCache) == 0 {
+				m.ppsCache = append(m.ppsCache[:0], nal...)
+			}
 		}
 	}
 	au := m.currentAU

@@ -152,6 +152,31 @@ func NewMirrorSession(id string, video, audio webrtc.RTPCodecCapability) (*Sessi
 	return s, nil
 }
 
+// OfferFmtpLines returns every a=fmtp:* line from the WHIP offer SDP,
+// unparsed. Debug aid — lets the operator log exactly what the client
+// negotiated so we can correlate codec behaviour without redeploying
+// with a full SDP dump (privacy-safer than a verbatim offer log).
+func (s *Session) OfferFmtpLines() []string {
+	s.mu.Lock()
+	pc := s.peerConn
+	s.mu.Unlock()
+	if pc == nil {
+		return nil
+	}
+	desc := pc.RemoteDescription()
+	if desc == nil {
+		return nil
+	}
+	var out []string
+	for _, line := range strings.Split(desc.SDP, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(line, "a=fmtp:") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
 // VideoSPSPPS extracts the H.264 Sequence + Picture Parameter Sets
 // from the WebRTC offer's fmtp line (sprop-parameter-sets=SPS_b64,PPS_b64).
 // Browser encoders typically transmit SPS/PPS OUT-OF-BAND via the SDP
