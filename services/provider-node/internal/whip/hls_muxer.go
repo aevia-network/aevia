@@ -41,22 +41,41 @@ type HLSMuxer struct {
 	videoTrk  *gohlslib.Track
 	sessionID string
 
-	mu           sync.Mutex
-	currentAU    [][]byte
-	currentPTS   uint32
-	firstPTS     uint32
-	firstPTSSet  bool
-	startTime    time.Time
-	frameCount   uint64
+	// spsCache / ppsCache carry the H.264 parameter sets extracted
+	// from the WHIP offer's sprop-parameter-sets. Browser encoders
+	// ship them OUT-OF-BAND via SDP and omit inline NALs — so we
+	// inject them ourselves ahead of every IDR AU to keep the
+	// MPEG-TS / fmp4 output self-decodable.
+	spsCache []byte
+	ppsCache []byte
+
+	mu          sync.Mutex
+	currentAU   [][]byte
+	currentPTS  uint32
+	firstPTS    uint32
+	firstPTSSet bool
+	startTime   time.Time
+	frameCount  uint64
 }
 
 // NewHLSMuxer constructs + starts a gohlslib muxer for a session.
 // ClockRate pins at the 90 kHz H.264 standard (our input is pion
 // RTP with H.264 payload — VideoTimescale is the matching value).
-func NewHLSMuxer(sessionID string) (*HLSMuxer, error) {
+//
+// sps / pps are the H.264 parameter sets lifted from the WHIP offer's
+// sprop-parameter-sets fmtp field. Pass nil if unavailable (mirror
+// origins, dev CLI clients that encode inline SPS/PPS). When set,
+// they are pre-populated on the gohlslib Codec so the very first
+// segment carries valid params; they are ALSO injected in front of
+// each IDR AU inside OnVideoFrame for cases where gohlslib's
+// internal SPS/PPS cache gets reset.
+func NewHLSMuxer(sessionID string, sps, pps []byte) (*HLSMuxer, error) {
 	variant := parseVariantEnv()
 	videoTrack := &gohlslib.Track{
-		Codec:     &codecs.H264{},
+		Codec: &codecs.H264{
+			SPS: sps,
+			PPS: pps,
+		},
 		ClockRate: VideoTimescale,
 	}
 
@@ -76,6 +95,8 @@ func NewHLSMuxer(sessionID string) (*HLSMuxer, error) {
 		mux:       mux,
 		videoTrk:  videoTrack,
 		sessionID: sessionID,
+		spsCache:  append([]byte(nil), sps...),
+		ppsCache:  append([]byte(nil), pps...),
 		startTime: time.Now(),
 	}, nil
 }
@@ -163,13 +184,46 @@ func (m *HLSMuxer) flushCurrentAULocked() {
 	if len(m.currentAU) == 0 {
 		return
 	}
+	// Scan the AU for IDR + parameter-set presence. Browser encoders
+	// strip SPS/PPS from the RTP stream and only ship them via SDP's
+	// sprop-parameter-sets — leaving MPEG-TS segments with IDRs that
+	// reference a PPS the decoder never received. Inject the cached
+	// SDP-derived SPS/PPS ahead of every IDR AU so gohlslib's codec
+	// params pipeline can capture them and every segment bootstraps
+	// independent decode.
+	hasIDR, hasSPS, hasPPS := false, false, false
+	for _, nal := range m.currentAU {
+		if len(nal) == 0 {
+			continue
+		}
+		switch nal[0] & 0x1F {
+		case 5:
+			hasIDR = true
+		case 7:
+			hasSPS = true
+		case 8:
+			hasPPS = true
+		}
+	}
+	au := m.currentAU
+	if hasIDR && (!hasSPS || !hasPPS) && len(m.spsCache) > 0 && len(m.ppsCache) > 0 {
+		prepended := make([][]byte, 0, len(au)+2)
+		if !hasSPS {
+			prepended = append(prepended, append([]byte(nil), m.spsCache...))
+		}
+		if !hasPPS {
+			prepended = append(prepended, append([]byte(nil), m.ppsCache...))
+		}
+		au = append(prepended, au...)
+	}
+
 	// PTS to gohlslib is in ClockRate (90k) ticks, relative to the
 	// first frame we observed. Subtracting firstPTS with uint32
 	// arithmetic handles RTP wraparound naturally.
 	relPTS := int64(int32(m.currentPTS - m.firstPTS))
 	ntp := m.startTime.Add(time.Duration(relPTS) * time.Second / time.Duration(VideoTimescale))
 
-	_ = m.mux.WriteH264(m.videoTrk, ntp, relPTS, m.currentAU)
+	_ = m.mux.WriteH264(m.videoTrk, ntp, relPTS, au)
 	m.frameCount++
 	m.currentAU = m.currentAU[:0]
 }
