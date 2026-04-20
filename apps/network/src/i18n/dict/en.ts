@@ -11,6 +11,7 @@ export const en: Dictionary = {
       roadmap: 'roadmap',
       manifesto: 'manifesto',
       faq: 'faq',
+      network: 'network',
       externalVideo: 'aevia.video',
       menuOpen: 'open menu',
       menuClose: 'close menu',
@@ -1027,6 +1028,36 @@ export const en: Dictionary = {
     home: 'back to home',
     spec: 'go to spec',
     quote: '“persistence does not imply distribution.”',
+  },
+  network: {
+    meta: {
+      title: 'network · aevia.network',
+      description:
+        'Live map of Aevia provider-nodes. /healthz polled every 30s, active sessions, hardware per region.',
+    },
+    eyebrow: 'protocol · network',
+    title: 'network',
+    subtitle:
+      'Provider-nodes that pin content, serve HLS, and participate in the libp2p mesh. Status polled every 30s directly from each node\'s /healthz. Nothing here is mocked — if it shows offline, it is offline.',
+    stamp: 'source: data/providers.ts + GET /api/network/providers',
+    statsOnline: 'online',
+    statsActiveSessions: 'active sessions (total)',
+    statsProbedAt: 'last probe (UTC)',
+    statusOnline: 'online',
+    statusOffline: 'offline',
+    tableHeading: 'network nodes',
+    tableNote:
+      'The animated arcs represent libp2p mesh discovery and exchange between online nodes — they are not individual real packets. Aggregated Proof-of-Relay receipts will be exposed via a public endpoint once the aggregator is ready (RFC-5 §4).',
+    tableCols: {
+      name: 'name',
+      region: 'region',
+      hardware: 'hardware',
+      status: 'status',
+      sessions: 'sessions',
+      peerId: 'peer id',
+    },
+    legalNote:
+      'This page polls provider-node HTTPS endpoints in real time. No viewer data is collected. Geographic location comes from the node\'s own /healthz (operator-declared) or from static fallback in data/providers.ts.',
   },
   faq: {
     meta: {
