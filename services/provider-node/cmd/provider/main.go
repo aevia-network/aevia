@@ -317,19 +317,30 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		// Mirror got a fan-out stream from an origin. Announce the
 		// sessionCID so viewers doing /dht/resolve can discover that
 		// THIS node also serves the stream — same CID, different peerID.
+		// Re-announces every DHTReannounceInterval (default 10 min)
+		// until the mirror session ends, so if the upstream origin dies
+		// AND the mirror also dies, the DHT record expires within
+		// ~20 min rather than lingering for the full ~24h kad-dht TTL.
 		go func() {
 			announceCid, cerr := sessioncid.Of(sess.ID)
 			if cerr != nil {
 				mirrorLog.Warn().Err(cerr).Str("event", "mirror_session_cid_failed").Str("session_id", sess.ID).Msg("derive session cid")
 				return
 			}
-			actx, acancel := context.WithTimeout(ctx, 30*time.Second)
-			defer acancel()
-			if aerr := d.Provide(actx, announceCid); aerr != nil {
-				mirrorLog.Warn().Err(aerr).Str("event", "mirror_session_announce_failed").Str("session_id", sess.ID).Str("cid", announceCid).Msg("dht provide mirror session")
-				return
-			}
-			mirrorLog.Info().Str("event", "mirror_session_announced").Str("session_id", sess.ID).Str("cid", announceCid).Msg("mirror session announced in DHT")
+			d.SessionAnnounceLoop(ctx, sess.Done(), announceCid, cfg.DHTReannounceInterval,
+				func(ev aeviadht.SessionAnnounceEvent, aerr error) {
+					switch ev {
+					case aeviadht.SessionAnnounceInitial:
+						mirrorLog.Info().Str("event", "mirror_session_announced").Str("session_id", sess.ID).Str("cid", announceCid).Msg("mirror session announced in DHT")
+					case aeviadht.SessionAnnounceRefresh:
+						mirrorLog.Info().Str("event", "session_announce_refresh").Str("session_id", sess.ID).Str("cid", announceCid).Msg("mirror session re-announced in DHT")
+					case aeviadht.SessionAnnounceFailed:
+						mirrorLog.Warn().Err(aerr).Str("event", "mirror_session_announce_failed").Str("session_id", sess.ID).Str("cid", announceCid).Msg("dht provide mirror session")
+					case aeviadht.SessionAnnounceExpired:
+						mirrorLog.Info().Str("event", "session_announce_expired").Str("session_id", sess.ID).Str("cid", announceCid).Msg("mirror session announcement stopped")
+					}
+				},
+			)
 		}()
 	}
 	mirrorSrv.OnClose = func(sessionID string, m *mirror.HopMetrics) {
@@ -547,29 +558,34 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 		// Aevia node via /dht/resolve can discover which provider holds
 		// the stream. Without this the viewer is forced to a hardcoded
 		// hub URL — exactly the SPOF the Kademlia layer is meant to
-		// eliminate. Done in a bounded-ctx goroutine so a slow announce
+		// eliminate. Done in a dedicated goroutine so a slow announce
 		// never blocks the SDP answer.
+		//
+		// Re-announces every DHTReannounceInterval (default 10 min)
+		// until the session ends — if origin dies mid-stream the DHT
+		// record expires within ~20 min instead of the full ~24h
+		// kad-dht TTL that would otherwise leave stale pointers to
+		// a dead origin.
 		go func() {
 			announceCid, err := sessioncid.Of(sess.ID)
 			if err != nil {
 				whipLog.Warn().Err(err).Str("event", "session_cid_failed").Str("session_id", sess.ID).Msg("derive session cid")
 				return
 			}
-			actx, acancel := context.WithTimeout(ctx, 30*time.Second)
-			defer acancel()
-			if err := d.Provide(actx, announceCid); err != nil {
-				whipLog.Warn().Err(err).
-					Str("event", "session_announce_failed").
-					Str("session_id", sess.ID).
-					Str("cid", announceCid).
-					Msg("dht provide failed — session not discoverable via /dht/resolve")
-				return
-			}
-			whipLog.Info().
-				Str("event", "session_announced").
-				Str("session_id", sess.ID).
-				Str("cid", announceCid).
-				Msg("live session announced in DHT")
+			d.SessionAnnounceLoop(ctx, sess.Done(), announceCid, cfg.DHTReannounceInterval,
+				func(ev aeviadht.SessionAnnounceEvent, aerr error) {
+					switch ev {
+					case aeviadht.SessionAnnounceInitial:
+						whipLog.Info().Str("event", "session_announced").Str("session_id", sess.ID).Str("cid", announceCid).Msg("live session announced in DHT")
+					case aeviadht.SessionAnnounceRefresh:
+						whipLog.Info().Str("event", "session_announce_refresh").Str("session_id", sess.ID).Str("cid", announceCid).Msg("live session re-announced in DHT")
+					case aeviadht.SessionAnnounceFailed:
+						whipLog.Warn().Err(aerr).Str("event", "session_announce_failed").Str("session_id", sess.ID).Str("cid", announceCid).Msg("dht provide failed — session not discoverable via /dht/resolve")
+					case aeviadht.SessionAnnounceExpired:
+						whipLog.Info().Str("event", "session_announce_expired").Str("session_id", sess.ID).Str("cid", announceCid).Msg("live session announcement stopped")
+					}
+				},
+			)
 		}()
 
 		go func() {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 // Mode is the node role.
@@ -110,6 +111,17 @@ type Config struct {
 	// defaults to 3. Capped at 10 server-side by /mirrors/candidates to
 	// bound response size, but selection itself honours higher values.
 	MirrorFanoutK int
+	// DHTReannounceInterval is how often each live WHIP session
+	// re-announces its sessionCID into the DHT while the origin (or
+	// mirror) is alive. Zero uses the compiled default (10 minutes).
+	// Overridable via AEVIA_DHT_REANNOUNCE_INTERVAL for tests that need
+	// a 500ms loop without waiting ten real minutes.
+	//
+	// The re-announce is the anti-stale-DHT safeguard: the default
+	// kad-dht record TTL is ~24h, so if origin dies mid-stream its
+	// record survives long after the stream ended. Refreshing every
+	// 10 min means after origin death the record is gone in ≲20 min.
+	DHTReannounceInterval time.Duration
 }
 
 // Default returns the config the binary boots with when no flags, env vars,
@@ -248,6 +260,11 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("AEVIA_MIRROR_FANOUT_K"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MirrorFanoutK = n
+		}
+	}
+	if v := os.Getenv("AEVIA_DHT_REANNOUNCE_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			cfg.DHTReannounceInterval = d
 		}
 	}
 	if v := os.Getenv("AEVIA_FORCE_REACHABILITY"); v != "" {
