@@ -48,3 +48,29 @@ os testes atuais **não** exercitam fluxo autenticado. login com Privy
 real exige um fixture de sessão que a sprint 3 vai endereçar (Privy test
 mode + cookie seeding). o placeholder `test.skip('authenticated flow —
 sprint 3', ...)` em `smoke.spec.ts` marca o ponto de aterrissagem.
+
+## smoke operador-só: p2p-hls-multiviewer
+
+`p2p-hls-multiviewer.spec.ts` é uma suíte **skip-by-default**, não
+gateada por CI. exige uma live real sendo servida por um
+provider-node e roda contra a URL que o operador passar em
+`AEVIA_E2E_LIVE_URL`.
+
+executar manualmente (após subir uma live com `ffmpeg ... WHIP ...`):
+
+```bash
+AEVIA_E2E_LIVE_URL="https://aevia.video/live/mesh/s_abc123" \
+  pnpm -C apps/video exec playwright test p2p-hls-multiviewer
+```
+
+cobre dois cenários impossíveis de validar em unit test:
+
+1. dois browsers headless abrindo a mesma live com `?p2p=1&chunks=1`
+   formam swarm e o chip `NN% via peers · M pares` aparece em pelo
+   menos um dentro de 45s.
+2. quando o provider top-ranked é bloqueado (`route().abort()` no
+   `.m3u8`), o player rota via `loadSource` para o próximo candidato
+   e entra em playback sem surfaceiar erro terminal.
+
+se `AEVIA_E2E_LIVE_URL` não estiver setado, o describe inteiro é
+skipado e o arquivo é no-op. `pnpm test:e2e` em CI continua verde.
