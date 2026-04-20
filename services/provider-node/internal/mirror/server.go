@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 
 	"github.com/Leeaandrob/aevia/services/provider-node/internal/whip"
@@ -137,6 +138,13 @@ func (s *Server) handleStream(stream network.Stream) {
 
 	videoHub := sess.VideoHub()
 	audioHub := sess.AudioHub()
+	// videoDepack decodes FU-A/STAP-A RTP payloads into annex-B NALs
+	// before handing them to the session's FrameSink (HLSMuxer +
+	// LivePinSink tee, installed by main.go's mirrorSrv.OnSession
+	// callback). Per-session instance is mandatory — H264Packet
+	// carries FU-A reassembly state, sharing would corrupt mixed
+	// streams. Cheap to construct (just two pointers).
+	videoDepack := &codecs.H264Packet{IsAVC: false}
 	for {
 		frame, err := ReadAnyFrame(stream)
 		if errors.Is(err, io.EOF) {
@@ -160,6 +168,20 @@ func (s *Server) handleStream(stream network.Stream) {
 			if frame.Type == FrameTypeVideoRTP {
 				if videoHub != nil {
 					_ = videoHub.WriteRTP(pkt)
+				}
+				// Feed the session's FrameSink so every
+				// mirror-recipient provider can serve /hls/
+				// identical to the WHIP origin. Demux is only
+				// done when a sink is attached (nil means the
+				// operator chose not to run HLS on this node).
+				if sink := sess.VideoFrameSink(); sink != nil {
+					if nal, err := videoDepack.Unmarshal(pkt.Payload); err == nil && len(nal) > 0 {
+						sink.OnVideoFrame(whip.VideoFrame{
+							NAL:       nal,
+							Timestamp: pkt.Timestamp,
+							Arrived:   time.Now(),
+						})
+					}
 				}
 				metrics.RecordVideo(hop)
 			} else {

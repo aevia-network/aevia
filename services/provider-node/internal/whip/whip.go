@@ -74,6 +74,17 @@ type Session struct {
 	sinkMu     sync.RWMutex
 	videoSinks []RTPSink
 	audioSinks []RTPSink
+
+	// FrameSinks receive DEPACKETIZED frames (per-AU NAL slices for
+	// video, per-packet Opus buffers for audio). Unlike RTPSinks which
+	// are RTP-level tees, FrameSinks live above pion's H264 / Opus
+	// depacketizer — they're what HLSMuxer and LivePinSink+
+	// CMAFSegmenter consume. One per session. Lets mirror-recipient
+	// providers serve /hls/ independently of the WHIP origin, with
+	// the exact same pipeline origin uses.
+	frameSinkMu    sync.RWMutex
+	videoFrameSink FrameSink
+	audioFrameSink FrameSink
 }
 
 // AttachVideoSink registers an additional RTP endpoint that receives a
@@ -90,6 +101,38 @@ func (s *Session) AttachAudioSink(sink RTPSink) {
 	s.sinkMu.Lock()
 	s.audioSinks = append(s.audioSinks, sink)
 	s.sinkMu.Unlock()
+}
+
+// AttachVideoFrameSink installs a FrameSink that receives demuxed H.264
+// NALs. Used by mirror-recipient providers to drive their own HLSMuxer
+// + LivePinSink from the RTP stream arriving via libp2p. Passing nil
+// detaches. Later calls overwrite — one sink per session.
+func (s *Session) AttachVideoFrameSink(sink FrameSink) {
+	s.frameSinkMu.Lock()
+	s.videoFrameSink = sink
+	s.frameSinkMu.Unlock()
+}
+
+// AttachAudioFrameSink is the audio counterpart — receives demuxed
+// Opus buffers. Reserved for M9 Opus→AAC transcode.
+func (s *Session) AttachAudioFrameSink(sink FrameSink) {
+	s.frameSinkMu.Lock()
+	s.audioFrameSink = sink
+	s.frameSinkMu.Unlock()
+}
+
+// VideoFrameSink returns the installed FrameSink or nil.
+func (s *Session) VideoFrameSink() FrameSink {
+	s.frameSinkMu.RLock()
+	defer s.frameSinkMu.RUnlock()
+	return s.videoFrameSink
+}
+
+// AudioFrameSink returns the installed audio FrameSink or nil.
+func (s *Session) AudioFrameSink() FrameSink {
+	s.frameSinkMu.RLock()
+	defer s.frameSinkMu.RUnlock()
+	return s.audioFrameSink
 }
 
 // fanOutVideoRTP writes pkt to every registered video sink. Errors are
