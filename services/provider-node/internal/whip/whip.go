@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -404,6 +405,44 @@ func NewServer(opts Options) (*Server, error) {
 		"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
 		"level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f",
 	}
+	// RTCPFeedback advertises the transport features the browser SHOULD
+	// use when the answer comes back. Critical:
+	//   - "nack"              — lost RTP packet retransmission. Without
+	//                           this, Chrome never retries a dropped
+	//                           FU-A fragment, pion's H264Packet
+	//                           silently reassembles with missing bytes,
+	//                           and the resulting IDR has corrupt slice
+	//                           entropy data. The segmenter then emits
+	//                           an MPEG-TS segment that fails every
+	//                           strict decoder (ffprobe "out of range
+	//                           intra chroma pred mode", VLC "error
+	//                           while decoding MB 0 1"). Evidence
+	//                           gathered 2026-04-19 comparing Mac
+	//                           localhost (0% loss, decode clean) vs
+	//                           prod CF Tunnel path (packet loss,
+	//                           decode fail despite identical pipeline).
+	//   - "nack pli"          — picture loss indication. Browser sends
+	//                           a fresh IDR when we detect decode is
+	//                           beyond repair, so the HLS segment can
+	//                           recover without breaking playback.
+	//   - "ccm fir"           — full intra request, older path some
+	//                           clients use instead of PLI.
+	//   - "goog-remb"         — receiver estimated max bitrate, lets
+	//                           Chrome adapt its encode to our reported
+	//                           capacity (prevents bursts that cause loss).
+	//   - "transport-cc"      — per-packet transport feedback used by
+	//                           Chrome's congestion controller. With
+	//                           transport-cc + default interceptors,
+	//                           Chrome paces the encode to avoid the
+	//                           bursts that provoke FU-A loss in the
+	//                           first place.
+	rtcpFb := []webrtc.RTCPFeedback{
+		{Type: "nack"},
+		{Type: "nack", Parameter: "pli"},
+		{Type: "ccm", Parameter: "fir"},
+		{Type: "goog-remb"},
+		{Type: "transport-cc"},
+	}
 	for _, fmtp := range h264Profiles {
 		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 			RTPCodecCapability: webrtc.RTPCodecCapability{
@@ -411,7 +450,7 @@ func NewServer(opts Options) (*Server, error) {
 				ClockRate:    90000,
 				Channels:     0,
 				SDPFmtpLine:  fmtp,
-				RTCPFeedback: nil,
+				RTCPFeedback: rtcpFb,
 			},
 			PayloadType: 0, // let MediaEngine assign
 		}, webrtc.RTPCodecTypeVideo); err != nil {
@@ -420,13 +459,23 @@ func NewServer(opts Options) (*Server, error) {
 	}
 	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType:  webrtc.MimeTypeOpus,
-			ClockRate: 48000,
-			Channels:  2,
+			MimeType:     webrtc.MimeTypeOpus,
+			ClockRate:    48000,
+			Channels:     2,
+			RTCPFeedback: []webrtc.RTCPFeedback{{Type: "transport-cc"}},
 		},
 		PayloadType: 0,
 	}, webrtc.RTPCodecTypeAudio); err != nil {
 		return nil, fmt.Errorf("whip: register opus codec: %w", err)
+	}
+	// RegisterDefaultInterceptors wires the pion-maintained pipeline
+	// for NACK (so we actually request retransmission when we detect
+	// a seq gap), RTP sender/receiver reports, and TWCC feedback. The
+	// default chain matches what the pion examples ship with and is
+	// the assumed baseline for any production WebRTC receiver.
+	ir := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, ir); err != nil {
+		return nil, fmt.Errorf("whip: register default interceptors: %w", err)
 	}
 	settings := webrtc.SettingEngine{}
 	if len(opts.PublicIPs) > 0 {
@@ -441,7 +490,7 @@ func NewServer(opts Options) (*Server, error) {
 	// IPs on the same subnet — loopback sidesteps that for co-resident
 	// viewers like test harnesses.
 	settings.SetIncludeLoopbackCandidate(true)
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithSettingEngine(settings))
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(ir), webrtc.WithSettingEngine(settings))
 	dids := make(map[string]struct{}, len(opts.AuthorisedDIDs))
 	for _, did := range opts.AuthorisedDIDs {
 		if did != "" {
