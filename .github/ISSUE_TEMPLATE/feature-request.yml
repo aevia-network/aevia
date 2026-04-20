@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest a capability, API change, or improvement. Scope must fit the thesis ("persistence does not imply distribution") and an existing RFC/ADR.
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Features that move the Risk Score, the AUP, the BoostRouter split, or any governance parameter must reference the RFC/ADR they modify. Changes without a spec anchor will be redirected to open an ADR draft first.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - aevia.video (consumer PWA)
+        - aevia.network (protocol site)
+        - services/provider-node (Go binary)
+        - packages/contracts (Solidity)
+        - Protocol spec (docs/protocol-spec) or ADR (docs/adr)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Name the user, the workflow, and the current friction. No solutioning yet.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Concrete shape of the change. Reference RFC/ADR numbers if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

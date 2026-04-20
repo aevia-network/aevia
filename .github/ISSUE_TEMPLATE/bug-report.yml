@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible defect in aevia.video, aevia.network, the Provider Node, or the contracts.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include the commit hash you observed the issue on — `TRACTION.md` and `CHANGELOG.md` move fast.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - aevia.video (consumer PWA)
+        - aevia.network (protocol site)
+        - services/provider-node (Go binary)
+        - packages/contracts (Solidity on Base Sepolia)
+        - packages/ui, packages/auth, packages/protocol, packages/libp2p-config
+        - Other / I'm not sure
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit hash or deployed URL
+      description: e.g. `c7fba30` or `https://aevia.video/live/abc123`
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Concrete, reproducible steps. Include error messages, screenshots, network tab output, or provider-node logs if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser + OS for frontend; Go version + OS + arch for provider-node; Foundry version for contracts.
+    validations:
+      required: false

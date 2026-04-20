@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/aevia-network/aevia/security/advisories/new
+    about: Report a security vulnerability privately via GitHub Security Advisories. See SECURITY.md.
+  - name: Protocol spec or ADR discussion
+    url: https://github.com/aevia-network/aevia/tree/main/docs
+    about: RFCs live in docs/protocol-spec/, ADRs in docs/adr/. Open a focused issue referencing the RFC or ADR number.

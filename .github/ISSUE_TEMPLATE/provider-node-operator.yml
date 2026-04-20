@@ -1,0 +1,45 @@
+name: Provider Node operator question
+description: Running (or thinking about running) an aevia Provider Node — ask setup, config, NAT, bandwidth, or payout questions here.
+title: "operator: "
+labels: ["provider-node", "operator", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please skim [`services/provider-node/README.md`](../../services/provider-node/README.md) and [`TRACTION.md`](../../TRACTION.md). For protocol-level questions (why the ranker weights are what they are, how payouts work), reference the specific RFC in `docs/protocol-spec/` — that anchors the discussion to the normative document.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Build / cross-compile
+        - Config / env vars
+        - NAT traversal / Circuit Relay v2 / Cloudflare Tunnel
+        - Bandwidth planning / capacity
+        - Mirror protocol / ranker behavior
+        - Proof-of-Relay / PersistencePool payouts
+        - Health endpoint / observability
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit hash you're running
+      description: Output of `git rev-parse --short HEAD` at the repo root. `main` moves fast; anchoring the commit saves a round-trip.
+    validations:
+      required: true
+  - type: textarea
+    id: host
+    attributes:
+      label: Host environment
+      description: OS + arch, public endpoint setup (CF Tunnel, reverse proxy, direct), bandwidth cap, RAM, storage path.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What are you trying to do, and what's happening?
+      description: Concrete: what did you run, what logs came back, what did `/healthz` report.
+    validations:
+      required: true
