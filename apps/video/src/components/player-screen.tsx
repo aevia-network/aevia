@@ -449,6 +449,18 @@ export function PlayerScreen(props: PlayerScreenProps) {
       const useChunkRelay =
         query?.get('p2p') === '1' && query?.get('chunks') === '1' && Boolean(props.aeviaSessionId);
 
+      // Fase 3.2b preview — `?tracker=pubsub` opts the viewer into the
+      // sovereign announce path (pubsub-tracker.ts). No-op today: the
+      // flag logs a line and falls through to the default public
+      // tracker list baked into chunk-relay.ts. Stable flag name so
+      // docs + operator tooling can reference it ahead of the real
+      // wiring (Path A or Path B — see pubsub-tracker.ts header).
+      if (useChunkRelay && query?.get('tracker') === 'pubsub' && props.aeviaSessionId) {
+        void import('@/lib/p2p/pubsub-tracker').then(({ tryEnablePubsubTracker }) => {
+          tryEnablePubsubTracker(props.aeviaSessionId as string);
+        });
+      }
+
       // Lifecycle orchestration: we need to dynamic-import p2p-media-loader
       // when useChunkRelay — that's async. But useEffect callbacks can't be
       // async themselves, so we spawn an IIFE and hand the cleanup a stable
