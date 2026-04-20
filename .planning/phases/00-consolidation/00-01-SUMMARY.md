@@ -34,7 +34,7 @@ key-decisions:
 patterns-established:
   - "Merge commit for phase-branch consolidation uses scope 'video' (not 'consolidation' — rejected by commitlint); body enumerates absorbed commits verbatim for forensics"
 
-requirements-completed: []  # DEPLOY-01 NOT complete — merge landed on origin/main but production bundle still stale (see checkpoint below)
+requirements-completed: [DEPLOY-01]  # merge + CF Pages production deploy both complete — see "Task 3 Resolution" section below
 
 # Metrics
 duration: ~7min
@@ -159,6 +159,49 @@ All git-level and code-level claims verified. The production-bundle claim is NOT
 
 ---
 
+## Task 3 Resolution (2026-04-20, post-checkpoint)
+
+Operator authorized Option A (manual deploy via `pnpm pages:deploy`). Orchestrator ran the deploy sequence directly with session-level control:
+
+```bash
+set -a; source .env.local; set +a   # CLOUDFLARE_ACCOUNT_ID from .env.local
+cd apps/video
+pnpm build                          # next build — 23 routes, 227 KB shared
+pnpm pages:build                    # next-on-pages — _worker.js generated, 3.38s
+pnpm exec wrangler pages deploy .vercel/output/static --project-name=aevia-video --branch=main
+```
+
+**Preflight (env leak guard per memory `feedback_env_local_leak_prod`):**
+- `apps/video/.env.local` → symlink to `/videoengine/.env.local`
+- `grep AEVIA_DEV_BYPASS_AUTH` on the symlink target: ABSENT
+- `.env.local.bak` + `.env.local.bak.bypass` are untracked backups; NOT read by `next build`. Safe.
+
+**Local bundle preflight (`.vercel/output/static`):**
+- `/hls/index.m3u8` hits: 2 (expect ≥ 1) ✓
+- `/playlist.m3u8` hits: 0 (expect = 0) ✓
+
+**Deploy result:**
+- New deployment URL: `https://52a0ce13.aevia-video.pages.dev`
+- Environment: **Production** (branch `main`, source commit `c7fba30`)
+- CF Pages `deployment list` confirms: previous production was `3c4ae273` from commit `8766535` (21h ago); new prod is `52a0ce13` from `c7fba30` (48s after upload)
+
+**Post-deploy bundle verification (targeted chunk grep):**
+
+| URL | `/hls/index.m3u8` hits | `/playlist.m3u8` hits | `age` |
+|---|---|---|---|
+| `https://52a0ce13.aevia-video.pages.dev` | 1 | 0 | fresh |
+| `https://aevia.video` | 1 | 0 | 0 (cf-cache-status HIT, date now) |
+
+The initial checkpoint's 0-hit count was a false negative: it grepped the homepage initial bundle, but the player chunk carrying `hls.loadSource("/live/.../hls/index.m3u8")` is lazy-loaded on `/live/mesh/[id]` routes — chunk `5817-e7c5de750de98983.js`. Grepping that chunk directly on both preview and prod URLs returns the expected string. Plan 00-01 exit criteria met.
+
+**Methodology note for Plan 00-06 Strong gate check #4:** the bundle grep should target lazy-loaded player chunks (5817-*.js or equivalent in future builds), NOT just the home page. Task 3's how-to-verify should be refined in future phases to fetch `/live/mesh/<any-id>`, extract the script list, grep each. Filed as a small improvement in the Phase 0 gate-result artifact.
+
+**Deploy mechanism insight:** `wrangler pages deploy --branch=main` DOES promote to production — CF Pages treats `--branch=main` as the production-branch alias, not a preview. The plan's original assumption ("auto-deploy on push") was wrong (no git integration configured), but the `wrangler` manual deploy path correctly lands on the production URL. Option A is the normative deploy path for this project until git integration is added (deferred to a future infra plan).
+
+**DEPLOY-01 status:** COMPLETE. Merge + production bundle both live; `aevia.video` preview URL (`f049801b`) and production have converged onto the same code (commit ancestry `bccf70e` → `c7fba30`).
+
+---
+
 *Phase: 00-consolidation*
 *Plan: 01*
-*Completed (partial — Task 3 at checkpoint): 2026-04-20*
+*Completed: 2026-04-20 (Task 1-3 all green after operator-authorized Option A deploy)*
