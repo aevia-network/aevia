@@ -89,6 +89,7 @@ type Server struct {
 	region   string
 	lat      *float64
 	lng      *float64
+	build    string
 
 	sessionCounter ActiveSessionCounter
 	mirrorRanker   MirrorRanker
@@ -131,6 +132,17 @@ func WithActiveSessionCounter(c ActiveSessionCounter) ServerOption {
 // constructed in main.go wrapping mirror.Client + mirror.Ranker.
 func WithMirrorRanker(r MirrorRanker) ServerOption {
 	return func(s *Server) { s.mirrorRanker = r }
+}
+
+// WithBuild stamps the binary's build identifier into /healthz.
+// Typically wired from main.Version (set via -X main.Version=${VERSION}
+// in deploy/scripts/build-all.sh). Empty string omits the field.
+//
+// Gate check #5 of Phase 0 relies on this field to mechanise the
+// rolling-deploy binary-hash assertion: each provider's /healthz
+// .build must equal `git rev-parse --short HEAD` of main.
+func WithBuild(build string) ServerOption {
+	return func(s *Server) { s.build = build }
 }
 
 // NewServer wires the default handlers and returns a Server that can be
@@ -256,6 +268,13 @@ type healthResponse struct {
 	// it as the load term (β·load). Pointer so the field is omitted when
 	// the httpx.Server wasn't wired with an ActiveSessionCounter.
 	ActiveSessions *int `json:"active_sessions,omitempty"`
+	// Build is the short git SHA stamped into the binary at link time
+	// via -X main.Version=${VERSION} (deploy/scripts/build-all.sh).
+	// Phase 0 Strong gate check #5 asserts that every deployed node's
+	// /healthz .build equals `git rev-parse --short HEAD` of main.
+	// Omitted when WithBuild was not used to preserve backward
+	// compatibility with operators running pre-Phase-0 binaries.
+	Build string `json:"build,omitempty"`
 }
 
 func (s *Server) registerDefaults() {
@@ -272,6 +291,7 @@ func (s *Server) registerDefaults() {
 			Lat:            s.lat,
 			Lng:            s.lng,
 			ActiveSessions: active,
+			Build:          s.build,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)

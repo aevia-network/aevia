@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -102,6 +103,66 @@ func TestServerProtocolDefaultsToAevia(t *testing.T) {
 	srv := httpx.NewServer(h)
 	if got := srv.Protocol(); got != httpx.DefaultProtocol {
 		t.Fatalf("Protocol() = %q, want %q", got, httpx.DefaultProtocol)
+	}
+}
+
+// TestHealthzIncludesBuildWhenConfigured proves the Phase 0 Strong gate
+// check #5 contract: when main.Version is wired via httpx.WithBuild, the
+// /healthz JSON response exposes it as `.build`. Gate tooling reads this
+// to assert each deployed binary matches HEAD of `main`.
+func TestHealthzIncludesBuildWhenConfigured(t *testing.T) {
+	h := newHost(t)
+	srv := httpx.NewServer(h, httpx.WithBuild("abc1234"))
+
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body struct {
+		Build string `json:"build"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Build != "abc1234" {
+		t.Fatalf("build = %q, want %q", body.Build, "abc1234")
+	}
+}
+
+// TestHealthzOmitsBuildWhenNotConfigured guarantees backward compatibility
+// with operators running older binaries: when the server is constructed
+// without WithBuild, `.build` is absent from the JSON object (omitempty
+// behaviour), not present as an empty string. The gate script can then
+// distinguish "field missing → older binary" from "field present but wrong
+// hash → deploy mismatch".
+func TestHealthzOmitsBuildWhenNotConfigured(t *testing.T) {
+	h := newHost(t)
+	srv := httpx.NewServer(h)
+
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode raw body: %v", err)
+	}
+	if _, present := raw["build"]; present {
+		t.Fatalf("build key must be absent when WithBuild not used, got %s", raw["build"])
 	}
 }
 

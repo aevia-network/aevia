@@ -45,6 +45,14 @@ import (
 
 const shutdownGracePeriod = 10 * time.Second
 
+// Version is the short git SHA stamped into the binary at link time
+// via -ldflags "-X main.Version=${VERSION}" (see deploy/scripts/build-all.sh).
+// The "dev" default lets `go run` / `go build` invocations succeed locally
+// without a linker override. Phase 0 Strong gate check #5 asserts every
+// deployed provider's /healthz .build equals `git rev-parse --short HEAD`
+// of main; httpx.WithBuild wires this var into the /healthz response.
+var Version = "dev"
+
 func main() {
 	logger := logging.Default()
 	args := os.Args[1:]
@@ -199,6 +207,7 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 
 	httpxOpts := []httpx.ServerOption{
 		httpx.WithActiveSessionCounter(whipSrv),
+		httpx.WithBuild(Version),
 	}
 	if cfg.Region != "" {
 		httpxOpts = append(httpxOpts, httpx.WithRegion(cfg.Region))
