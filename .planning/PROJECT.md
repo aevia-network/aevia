@@ -40,7 +40,7 @@ aevia is a sovereign live and persistent video protocol built on WHIP/WHEP + lib
 
 **Phase 1 — M9 audio Opus→AAC (research-backed, Approach B)**
 
-- [ ] **REQ-M9-01**: ADR 0012 documenting the choice of Approach B (bundled jellyfin-ffmpeg sidecar in a single tarball) over rejected alternatives (static libav in-process, wazero WASM, Rust FFI, fmp4+Opus)
+- [ ] **REQ-M9-01**: ADR 0013 documenting the choice of Approach B (bundled jellyfin-ffmpeg sidecar in a single tarball) over rejected alternatives (static libav in-process, wazero WASM, Rust FFI, fmp4+Opus). Note: ADR 0012 is claimed by Phase 0 B4 wire format Route A.
 - [ ] **REQ-M9-02**: `services/provider-node/internal/audio/transcoder.go` — wrapper over `exec.Command("./ffmpeg" ...)` with stdin Opus RTP → PCM → stdout AAC-ADTS, integrated with `gohlslib.Track` audio
 - [ ] **REQ-M9-03**: `deploy/scripts/package.sh` packages the release tarball `aevia-node-v0.1.0-{os}-{arch}.tar.gz` containing the Go binary + jellyfin-ffmpeg LGPL-static per arch + `LICENSES.md` + `config.default.toml`
 - [ ] **REQ-M9-04**: Pure-Go `pion/opus` decoder wired for Opus RTP → PCM 48kHz stereo (replaces placeholder)
@@ -76,7 +76,7 @@ aevia is a sovereign live and persistent video protocol built on WHIP/WHEP + lib
 - [ ] **REQ-EXIT-01**: Live session tested across 3 regions (BR + US-east + US-west) with 5+ concurrent viewers, sustained `P2PRatio > 0`, zero-reload provider-kill failover validated end to end
 - [ ] **REQ-EXIT-02**: Node-kill chaos test — random provider-node SIGKILL during a 2-minute live; viewers re-route via DHT in < 10s and recover playback
 - [ ] **REQ-EXIT-03**: `aevia.video/live/mesh/{id}?hls=1` serves HLS from any of the 6+ ranker-selected providers; every provider's `/healthz` response exposes `active_sessions + region + geo + rtt_p50`
-- [ ] **REQ-EXIT-04**: Public docs — ADRs 0010/0011/0012 + RFC-10 (mirror protocol) published in `docs/protocol-spec/` and mirrored in `aevia.network/spec/*`
+- [ ] **REQ-EXIT-04**: Public docs — ADRs 0010/0011/0012/0013 + RFC-10 (mirror protocol) published in `docs/protocol-spec/` and mirrored in `aevia.network/spec/*`
 - [ ] **REQ-EXIT-05**: End-to-end metrics shown across 3 regions × 10 viewers: O(log N) convergence of origin load vs the O(N) CDN baseline
 
 ### Out of Scope

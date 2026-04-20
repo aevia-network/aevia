@@ -30,26 +30,29 @@ Phase 0 is deliberately numbered 0 because it is debt-consolidation, not new fea
   1. `feat/frontend-phase2` merged into `main`; `aevia.video` production serves hls.js failover rotation + pubsub-tracker stub; preview URL `f049801b.aevia-video.pages.dev` no longer diverges from prod
   2. `feat/backend-phase2` pushed to origin; B1 (per-viewer WHEP UUID+DELETE) + B2 (DHT expiry + re-announce) + B3 (mirror FU-A gap drop) deployed across all 6 providers; `/healthz` on each returns binary build matching HEAD of `main`
   3. B4 (SPS/PPS forward in mirror protocol header) complete, committed, pushed, and deployed; `TestMirrorHeaderForwardSPS` green; no viewer sees stream-start decode failures when joining mid-session on a mirror-recipient provider
-**Plans**: TBD (~2-3 plans)
+**Plans**: 6 plans
 
 Plans:
-- [ ] 00-01: frontend merge + prod pages deploy
-- [ ] 00-02: backend push + cross-compile + 6-node deploy
-- [ ] 00-03: B4 SPS/PPS header completion + test + deploy
+- [ ] 00-01-PLAN.md — frontend merge + prod pages deploy (DEPLOY-01)
+- [ ] 00-02-PLAN.md — /healthz .build field + ADR 0012 prerequisite (DEPLOY-02 preamble)
+- [ ] 00-03-PLAN.md — backend merge + cross-compile + rolling deploy R1/R2/Mac/3 GPU hosts (DEPLOY-02)
+- [ ] 00-04-PLAN.md — B4 wire format (ADR 0012 Route A) + unit tests (DEPLOY-03 wire)
+- [ ] 00-05-PLAN.md — B4 origin writer + mirror reader plumbing + TestMirrorHeaderForwardSPS (DEPLOY-03 plumbing)
+- [ ] 00-06-PLAN.md — B4 rolling 6-node deploy + Strong gate + worktree cleanup + STATE/ROADMAP finalization (DEPLOY-03 deploy)
 
 ### Phase 1: M9 Audio Opus→AAC
 **Goal**: Close the HLS audio gap blocking Cloudflare Stream and native-iOS playback by shipping Approach B (bundled jellyfin-ffmpeg sidecar in a tarball), preserving the CGO_ENABLED=0 cross-compile invariant.
 **Depends on**: Phase 0
 **Requirements**: M9-01, M9-02, M9-03, M9-04, M9-05
 **Success Criteria** (what must be TRUE):
-  1. ADR 0012 published in `docs/adr/` with the Approach B rationale and rejection notes for static libav / wazero / Rust FFI / fmp4+Opus; mirrored in `aevia.network/spec/*`
+  1. ADR 0013 published in `docs/adr/` with the Approach B rationale and rejection notes for static libav / wazero / Rust FFI / fmp4+Opus; mirrored in `aevia.network/spec/*` (ADR 0012 is claimed by Phase 0 B4 wire format Route A)
   2. `aevia-node-v0.1.0-{os}-{arch}.tar.gz` built for darwin-arm64 + linux-arm64 + linux-amd64 + windows-amd64; Go binary stays ~15 MB, total tarball ~50 MB, `LICENSES.md` includes FFmpeg LGPLv2.1 + jellyfin-ffmpeg attribution
   3. Viewer playing HLS via VLC, ffplay, native iOS Safari, and Chrome hears continuous audio throughout a 5-minute live session; `/live/{id}/hls/index.m3u8` carries both video and AAC audio tracks
   4. Operator onboarding is a single command pair (`tar xf ... && ./aevia-node`) on Linux/macOS; Windows equivalent documented in pt-BR quickstart
 **Plans**: TBD (~3-4 plans)
 
 Plans:
-- [ ] 01-01: ADR 0012 + transcoder design doc
+- [ ] 01-01: ADR 0013 + transcoder design doc (ADR 0012 claimed by Phase 0 B4 wire format Route A)
 - [ ] 01-02: `internal/audio/transcoder.go` + pion/opus decoder wiring + gohlslib audio track integration
 - [ ] 01-03: `deploy/scripts/package.sh` tarball pipeline + per-arch jellyfin-ffmpeg fetch + LICENSES + config template
 - [ ] 01-04: docs pt-BR quickstart update + Windows variant
@@ -125,7 +128,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. 3-region × 5+ concurrent-viewer live session sustained `P2PRatio > 0`; a SIGKILL on the serving provider causes viewer recovery via DHT in < 10s end-to-end with no user action
   2. `aevia.video/live/mesh/{id}?hls=1` serves HLS from any ranker-selected provider; each provider's `/healthz` exposes `active_sessions + region + geo + rtt_p50`
-  3. ADRs 0010/0011/0012 plus RFC-10 (mirror protocol) published in `docs/protocol-spec/`, mirrored in `aevia.network/spec/*`, and linked from the site navigation
+  3. ADRs 0010/0011/0012/0013 plus RFC-10 (mirror protocol) published in `docs/protocol-spec/`, mirrored in `aevia.network/spec/*`, and linked from the site navigation
   4. End-to-end 3 regions × 10 viewers measurement shows origin load growing sub-linearly (O(log N) trend-fit) vs a control CDN run growing linearly; results captured in a public post-mortem artifact
 **Plans**: TBD (~3 plans)
 
@@ -141,7 +144,7 @@ Phases execute sequentially: 0 → 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Consolidation | 0/TBD | Not started | - |
+| 0. Consolidation | 0/6 | Planned | - |
 | 1. M9 Audio | 0/TBD | Not started | - |
 | 2. Circuit Relay v2 | 0/TBD | Not started | - |
 | 3. Chunk Tracker Sovereignty | 0/TBD | Not started | - |

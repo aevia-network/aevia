@@ -13,7 +13,7 @@
 
 ### M9 Audio (Phase 1 — Opus→AAC transcode)
 
-- [ ] **M9-01**: ADR 0012 documenting Approach B (bundled jellyfin-ffmpeg sidecar in tarball) with rejected-routes rationale
+- [ ] **M9-01**: ADR 0013 documenting Approach B (bundled jellyfin-ffmpeg sidecar in tarball) with rejected-routes rationale (ADR 0012 is claimed by Phase 0 B4 wire format Route A)
 - [ ] **M9-02**: `services/provider-node/internal/audio/transcoder.go` wrapping `exec.Command("./ffmpeg" ...)` stdin Opus RTP → PCM → stdout AAC-ADTS, integrated with `gohlslib.Track` audio
 - [ ] **M9-03**: `deploy/scripts/package.sh` producing `aevia-node-v0.1.0-{os}-{arch}.tar.gz` with Go binary + jellyfin-ffmpeg LGPL-static + LICENSES.md + config.default.toml
 - [ ] **M9-04**: Pure-Go `pion/opus` decoder wired for Opus RTP → PCM 48kHz stereo
@@ -49,7 +49,7 @@
 - [ ] **EXIT-01**: Live session tested across 3 regions (BR + US-east + US-west) with 5+ concurrent viewers, sustained `P2PRatio > 0`, zero-reload provider-kill failover validated end-to-end
 - [ ] **EXIT-02**: Node-kill chaos test — random provider-node SIGKILL during 2min live; viewers re-route via DHT in < 10s and recover playback
 - [ ] **EXIT-03**: `aevia.video/live/mesh/{id}?hls=1` serves HLS from any ranker-selected provider; each `/healthz` exposes `active_sessions + region + geo + rtt_p50`
-- [ ] **EXIT-04**: Public docs — ADRs 0010/0011/0012 + RFC-10 (mirror protocol) published in `docs/protocol-spec/` and mirrored in `aevia.network/spec/*`
+- [ ] **EXIT-04**: Public docs — ADRs 0010/0011/0012/0013 + RFC-10 (mirror protocol) published in `docs/protocol-spec/` and mirrored in `aevia.network/spec/*`
 - [ ] **EXIT-05**: End-to-end metrics demonstrated across 3 regions × 10 viewers: O(log N) origin load convergence vs O(N) CDN baseline
 
 ## v2 Requirements
