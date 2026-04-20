@@ -331,12 +331,42 @@ export function PlayerScreen(props: PlayerScreenProps) {
   // Aevia-mesh live playback via hls.js — used as fallback when WHEP
   // isn't configured. Keeps the same <video> element WHEP uses so the
   // autoplay gate / states / controls stay unchanged.
+  //
+  // Fase 2.3 HLS failover (parallel to WHEP failover): when a candidate
+  // list is present, we build one HLS URL per candidate and rotate
+  // `loadSource` on the same hls.js instance when hls.js's own retry
+  // budget (manifestLoadingMaxRetry × manifestLoadingRetryDelay ≈ 15s)
+  // exhausts on a fatal network error. Total rotations capped at
+  // `candidates.length` so we never loop forever — after all candidates
+  // fail we surface the error state. Same <video> element + same
+  // hls.js instance across rotations: DOM churn stays zero, the
+  // MediaSource buffer is flushed via `loadSource` internally.
   useEffect(() => {
     if (mode !== 'live') return;
     if (effectiveWhepUrl) return; // WHEP path owns playback
-    if (!props.aeviaHlsUrl) return;
     const video = videoRef.current;
     if (!video) return;
+
+    // Build the ordered HLS URL list:
+    //   - If failover candidates + sessionId present, construct one URL
+    //     per candidate using the same pattern the mesh page uses:
+    //     `{httpsBase}/live/{sessionId}/hls/index.m3u8`. Order follows
+    //     the rank produced by `rankProvidersByRegion` upstream.
+    //   - Otherwise, fall back to the single `aeviaHlsUrl` prop.
+    const hlsUrls: string[] = (() => {
+      if (
+        props.aeviaFailoverCandidates &&
+        props.aeviaFailoverCandidates.length > 0 &&
+        props.aeviaSessionId
+      ) {
+        return props.aeviaFailoverCandidates.map(
+          (c) => `${c.httpsBase.replace(/\/+$/, '')}/live/${props.aeviaSessionId}/hls/index.m3u8`,
+        );
+      }
+      return props.aeviaHlsUrl ? [props.aeviaHlsUrl] : [];
+    })();
+
+    if (hlsUrls.length === 0) return;
 
     video.srcObject = null;
     setLiveStatus('connecting');
@@ -355,17 +385,38 @@ export function PlayerScreen(props: PlayerScreenProps) {
     const preferNative = !(p2pEnabled && Hls.isSupported());
 
     if (preferNative && video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = props.aeviaHlsUrl;
+      // Native HLS path — Safari handles retries + rotation internally
+      // via <video>.error. We only rotate on the initial `error` event;
+      // Safari's built-in logic is already aggressive enough (fetches
+      // the playlist every segment interval) that explicit rotation
+      // would fight it. If the first candidate 404s / 5xxs, Safari
+      // fires `error` fast; we swap `video.src` and let it retry. Cap
+      // at `hlsUrls.length` so we never loop.
+      let nativeIdx = 0;
+      const attachNative = () => {
+        const url = hlsUrls[nativeIdx];
+        if (!url) return;
+        video.src = url;
+      };
       const onCanPlay = () => {
         setLiveStatus('playing');
         video.play().catch(() => setAutoplayBlocked(true));
       };
       const onError = () => {
+        nativeIdx += 1;
+        if (nativeIdx < hlsUrls.length) {
+          // Rotate to next candidate. Don't surface error state —
+          // viewer sees a brief buffering flash at worst.
+          setLiveStatus('connecting');
+          attachNative();
+          return;
+        }
         setLiveStatus('error');
         setLiveError('playlist indisponível — transmissão pode ter encerrado');
       };
-      video.addEventListener('canplay', onCanPlay, { once: true });
+      video.addEventListener('canplay', onCanPlay);
       video.addEventListener('error', onError);
+      attachNative();
       return () => {
         video.removeEventListener('canplay', onCanPlay);
         video.removeEventListener('error', onError);
@@ -374,15 +425,15 @@ export function PlayerScreen(props: PlayerScreenProps) {
     }
 
     if (Hls.isSupported()) {
-      // Capture aeviaHlsUrl in a local const so the async IIFE below
-      // has a stable non-null reference that survives TS's lost
-      // narrowing across the await boundary.
-      const hlsUrl = props.aeviaHlsUrl;
       const hlsConfig = {
         enableWorker: false,
         // Live tuning — keep the manifest fresh and the buffer small so
         // we chase the head of the playlist as the provider pins new
-        // segments. Defaults target VOD.
+        // segments. Defaults target VOD. `manifestLoadingMaxRetry` +
+        // `manifestLoadingRetryDelay` define hls.js's internal retry
+        // budget (10 × 1.5s ≈ 15s); when that exhausts on a fatal
+        // network error we rotate to the next candidate via
+        // `loadSource`.
         liveSyncDurationCount: 2,
         liveMaxLatencyDurationCount: 6,
         manifestLoadingMaxRetry: 10,
@@ -406,6 +457,10 @@ export function PlayerScreen(props: PlayerScreenProps) {
       // right after.
       let cancelled = false;
       let destroy: (() => void) | undefined;
+      // Rotation cursor — survives across fatal errors. Starts at 0
+      // (top-ranked candidate). Advances on each fatal network error,
+      // capped at `hlsUrls.length` so we never loop infinitely.
+      let candidateIdx = 0;
 
       void (async () => {
         let hls: Hls;
@@ -447,18 +502,47 @@ export function PlayerScreen(props: PlayerScreenProps) {
           return;
         }
 
-        hls.loadSource(hlsUrl);
+        const loadCurrent = () => {
+          const url = hlsUrls[candidateIdx];
+          if (!url) return;
+          hls.loadSource(url);
+        };
+
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setLiveStatus('playing');
           video.play().catch(() => setAutoplayBlocked(true));
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            setLiveError(`mesh: ${data.type}`);
-            setLiveStatus('error');
+          if (!data.fatal) return;
+          // hls.js has exhausted its internal retry budget for this
+          // source. Attempt rotation to the next candidate. Media
+          // errors (decode failures) are NOT recoverable by rotation —
+          // those usually mean the segment is corrupt, which would
+          // repeat on every provider serving the same origin segments.
+          // We rotate only on NETWORK type; on OTHER/MEDIA we surface
+          // the error state directly.
+          const isNetwork = data.type === Hls.ErrorTypes.NETWORK_ERROR;
+          if (isNetwork && candidateIdx + 1 < hlsUrls.length) {
+            candidateIdx += 1;
+            setLiveStatus('connecting');
+            setLiveError(null);
+            // `loadSource` on the same instance flushes the MediaSource
+            // buffer and restarts manifest fetching against the new URL.
+            // No need to destroy + recreate — keeps P2P engine (when
+            // wired) alive across the rotation.
+            loadCurrent();
+            return;
           }
+          setLiveError(
+            isNetwork
+              ? `mesh: todos os ${hlsUrls.length} provedores indisponíveis`
+              : `mesh: ${data.type}`,
+          );
+          setLiveStatus('error');
         });
+
+        loadCurrent();
       })();
 
       return () => {
@@ -469,7 +553,13 @@ export function PlayerScreen(props: PlayerScreenProps) {
 
     setLiveError('navegador não suporta HLS');
     setLiveStatus('error');
-  }, [mode, props.aeviaHlsUrl, effectiveWhepUrl]);
+  }, [
+    mode,
+    props.aeviaHlsUrl,
+    props.aeviaFailoverCandidates,
+    props.aeviaSessionId,
+    effectiveWhepUrl,
+  ]);
 
   // ---- Auto-handoff live → VOD when broadcaster ends transmission ---------
   // The WHEP `disconnected` callback already flips `liveStatus` to `'ended'`
