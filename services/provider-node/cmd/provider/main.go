@@ -260,6 +260,51 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 			mirrorLog.Info().Str("event", "mirror_mesh_joined").Str("session_id", sess.ID).Msg("mirror subscribed to session topic")
 		}
 
+		// Mirror-side HLS: build the same HLSMuxer + LivePinSink pair
+		// origin uses so THIS node can answer /live/{id}/hls/* with
+		// its own segments. Without this the router replies "live: no
+		// muxer for session" and HLS viewer failover between providers
+		// breaks the moment origin loses the WHIP peer connection.
+		// SPS/PPS come from inline RTP (HLSMuxer's cache + inject path,
+		// same logic we validated on origin) — mirror has no SDP.
+		sink, err := whip.NewLivePinSink(cs, sess.ID)
+		if err != nil {
+			mirrorLog.Error().Err(err).Str("event", "mirror_sink_init_failed").Str("session_id", sess.ID).Msg("mirror sink init")
+			return
+		}
+		seg, err := whip.NewCMAFSegmenter(sink)
+		if err != nil {
+			mirrorLog.Error().Err(err).Str("event", "mirror_segmenter_init_failed").Str("session_id", sess.ID).Msg("mirror segmenter init")
+			return
+		}
+		muxer, err := whip.NewHLSMuxer(sess.ID, nil, nil)
+		if err != nil {
+			mirrorLog.Error().Err(err).Str("event", "mirror_muxer_init_failed").Str("session_id", sess.ID).Msg("mirror muxer init")
+			return
+		}
+		if err := liveRouter.AttachSession(sess.ID, sink); err != nil {
+			mirrorLog.Warn().Err(err).Str("event", "mirror_router_attach_sink_failed").Str("session_id", sess.ID).Msg("attach sink on mirror (probably origin-on-same-node shadow)")
+		}
+		if err := liveRouter.AttachMuxer(sess.ID, muxer); err != nil {
+			mirrorLog.Warn().Err(err).Str("event", "mirror_router_attach_muxer_failed").Str("session_id", sess.ID).Msg("attach muxer on mirror")
+		}
+		// Tee demuxed frames into both consumers. mirror/server.go
+		// pulls sess.VideoFrameSink() per-packet and feeds it.
+		sess.AttachVideoFrameSink(whip.NewTeeFrameSink(seg, muxer))
+		go func() {
+			<-sess.Done()
+			if cerr := seg.Close(); cerr != nil {
+				mirrorLog.Warn().Err(cerr).Str("event", "mirror_segmenter_close").Str("session_id", sess.ID).Msg("segmenter close")
+			}
+			if cerr := muxer.Close(); cerr != nil {
+				mirrorLog.Warn().Err(cerr).Str("event", "mirror_muxer_close").Str("session_id", sess.ID).Msg("muxer close")
+			}
+			liveRouter.DetachMuxer(sess.ID)
+			// NOTE: LivePinSink stays attached post-close so viewers
+			// arriving late can still read VOD manifest.json — same
+			// policy as origin path.
+		}()
+
 		// Mirror got a fan-out stream from an origin. Announce the
 		// sessionCID so viewers doing /dht/resolve can discover that
 		// THIS node also serves the stream — same CID, different peerID.
