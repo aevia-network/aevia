@@ -7,6 +7,7 @@ export const ptBR = {
       roadmap: 'roadmap',
       manifesto: 'manifesto',
       faq: 'faq',
+      network: 'rede',
       externalVideo: 'aevia.video',
       menuOpen: 'abrir menu',
       menuClose: 'fechar menu',
@@ -1032,6 +1033,36 @@ export const ptBR = {
     home: 'voltar para o início',
     spec: 'ir para a spec',
     quote: '“persistência não implica distribuição.”',
+  },
+  network: {
+    meta: {
+      title: 'rede · aevia.network',
+      description:
+        'mapa ao vivo dos provider-nodes da rede aevia. healthz polling 30s, sessões ativas, hardware por região.',
+    },
+    eyebrow: 'protocolo · rede',
+    title: 'rede',
+    subtitle:
+      'provider-nodes que pinam conteúdo, servem hls e participam da malha libp2p. status polled a cada 30s direto do /healthz de cada nó. nada aqui é mock — se aparecer offline, é offline.',
+    stamp: 'fonte: data/providers.ts + GET /api/network/providers',
+    statsOnline: 'online',
+    statsActiveSessions: 'sessões ativas (total)',
+    statsProbedAt: 'última probe (UTC)',
+    statusOnline: 'online',
+    statusOffline: 'offline',
+    tableHeading: 'nós da rede',
+    tableNote:
+      'os arcos animados representam descoberta e troca via libp2p mesh entre os nós online — não são pacotes individuais reais. proof-of-relay receipts agregados sairão em endpoint público quando o aggregator estiver pronto (RFC-5 §4).',
+    tableCols: {
+      name: 'nome',
+      region: 'região',
+      hardware: 'hardware',
+      status: 'status',
+      sessions: 'sessões',
+      peerId: 'peer id',
+    },
+    legalNote:
+      'esta página polla endpoints HTTPS dos provider-nodes em tempo real. nenhum dado de viewer é coletado. localização geográfica vem do próprio /healthz do nó (operador-declarada) ou de fallback estático em data/providers.ts.',
   },
   faq: {
     meta: {

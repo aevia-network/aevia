@@ -9,6 +9,7 @@ export const TOP_ROUTES = [
   '/spec',
   '/aup',
   '/faq',
+  '/network',
   '/privacy',
   '/terms',
   '/transparency',

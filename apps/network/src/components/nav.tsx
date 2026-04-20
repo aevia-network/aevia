@@ -7,7 +7,14 @@ import Link from 'next/link';
 
 import { MobileMenu } from './mobile-menu';
 
-export type NavSlug = 'whitepaper' | 'spec' | 'aup' | 'roadmap' | 'manifesto' | 'faq';
+export type NavSlug =
+  | 'whitepaper'
+  | 'spec'
+  | 'aup'
+  | 'roadmap'
+  | 'manifesto'
+  | 'faq'
+  | 'network';
 
 export function Nav({
   active,
@@ -27,6 +34,7 @@ export function Nav({
     { slug: 'roadmap', label: dict.common.nav.roadmap },
     { slug: 'manifesto', label: dict.common.nav.manifesto },
     { slug: 'faq', label: dict.common.nav.faq },
+    { slug: 'network', label: dict.common.nav.network },
   ];
 
   const ptPath = switchLocalePath('pt-BR', pathname);
