@@ -9,7 +9,7 @@
  *
  * Flow inside the viewer page:
  *
- *   1. Try `GET /live/{id}/playlist.m3u8` with hls.js.
+ *   1. Try `GET /live/{id}/hls/index.m3u8` with hls.js (gohlslib-served).
  *   2. If hls.js reports ENDLIST present → playback is already VOD-safe,
  *      nothing else to do. (No network switching.)
  *   3. If hls.js errors with a fatal network error OR the manifest.json

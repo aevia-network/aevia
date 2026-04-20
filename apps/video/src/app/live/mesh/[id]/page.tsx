@@ -76,7 +76,7 @@ export default async function MeshLiveViewerPage({
       title="transmissão ao vivo · rede aevia"
       whepUrl={''}
       hlsUrl={null}
-      aeviaHlsUrl={`${base}/live/${id}/playlist.m3u8`}
+      aeviaHlsUrl={`${base}/live/${id}/hls/index.m3u8`}
       aeviaWhepUrl={`${base}/whep/${id}`}
       aeviaSessionId={id}
       aeviaFailoverCandidates={failoverCandidates}

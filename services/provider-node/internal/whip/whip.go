@@ -12,14 +12,17 @@
 package whip
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -148,6 +151,94 @@ func NewMirrorSession(id string, video, audio webrtc.RTPCodecCapability) (*Sessi
 		s.audioHub = hub
 	}
 	return s, nil
+}
+
+// OfferFmtpLines returns every a=fmtp:* line from the WHIP offer SDP,
+// unparsed. Debug aid — lets the operator log exactly what the client
+// negotiated so we can correlate codec behaviour without redeploying
+// with a full SDP dump (privacy-safer than a verbatim offer log).
+func (s *Session) OfferFmtpLines() []string {
+	s.mu.Lock()
+	pc := s.peerConn
+	s.mu.Unlock()
+	if pc == nil {
+		return nil
+	}
+	desc := pc.RemoteDescription()
+	if desc == nil {
+		return nil
+	}
+	var out []string
+	for _, line := range strings.Split(desc.SDP, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(line, "a=fmtp:") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// VideoSPSPPS extracts the H.264 Sequence + Picture Parameter Sets
+// from the WebRTC offer's fmtp line (sprop-parameter-sets=SPS_b64,PPS_b64).
+// Browser encoders typically transmit SPS/PPS OUT-OF-BAND via the SDP
+// and only insert IDR NALs into the RTP stream — without fishing them
+// out here, downstream muxers (gohlslib, ffmpeg) get "non-existing PPS
+// referenced" on every keyframe because the MPEG-TS/fmp4 output
+// carries IDR with no matching parameter sets. Returns (nil, nil) when
+// the session has no peer connection (mirror origins) or the fmtp line
+// is missing sprop-parameter-sets.
+func (s *Session) VideoSPSPPS() (sps, pps []byte) {
+	s.mu.Lock()
+	pc := s.peerConn
+	s.mu.Unlock()
+	if pc == nil {
+		return nil, nil
+	}
+	// The offer carries sprop-parameter-sets — pion keeps it on the
+	// remote description. LocalDescription drops it because pion's
+	// Go codec doesn't re-emit SPS/PPS on its answer side.
+	desc := pc.RemoteDescription()
+	if desc == nil {
+		return nil, nil
+	}
+	return parseSpropParameterSets(desc.SDP)
+}
+
+// parseSpropParameterSets scans an SDP blob for any H.264 fmtp line
+// containing sprop-parameter-sets and returns the first SPS/PPS pair.
+// Format per RFC 6184 §8.2.1: comma-separated base64 NAL bytes, in
+// the order the encoder would have emitted them (SPS first, PPS next).
+// When multiple fmtps appear (e.g. packetization-mode=0 fallback and
+// =1 primary), we pick whichever reports sprop-parameter-sets first
+// — in practice they agree.
+func parseSpropParameterSets(sdp string) (sps, pps []byte) {
+	for _, line := range strings.Split(sdp, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if !strings.HasPrefix(line, "a=fmtp:") {
+			continue
+		}
+		for _, kv := range strings.Split(line, ";") {
+			kv = strings.TrimSpace(kv)
+			if !strings.HasPrefix(kv, "sprop-parameter-sets=") {
+				continue
+			}
+			val := strings.TrimPrefix(kv, "sprop-parameter-sets=")
+			parts := strings.SplitN(val, ",", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			spsB, err := base64.StdEncoding.DecodeString(strings.TrimSpace(parts[0]))
+			if err != nil || len(spsB) == 0 {
+				continue
+			}
+			ppsB, err := base64.StdEncoding.DecodeString(strings.TrimSpace(parts[1]))
+			if err != nil || len(ppsB) == 0 {
+				continue
+			}
+			return spsB, ppsB
+		}
+	}
+	return nil, nil
 }
 
 // Close drops the peer connection and signals session end. Idempotent.
@@ -314,6 +405,44 @@ func NewServer(opts Options) (*Server, error) {
 		"level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
 		"level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f",
 	}
+	// RTCPFeedback advertises the transport features the browser SHOULD
+	// use when the answer comes back. Critical:
+	//   - "nack"              — lost RTP packet retransmission. Without
+	//                           this, Chrome never retries a dropped
+	//                           FU-A fragment, pion's H264Packet
+	//                           silently reassembles with missing bytes,
+	//                           and the resulting IDR has corrupt slice
+	//                           entropy data. The segmenter then emits
+	//                           an MPEG-TS segment that fails every
+	//                           strict decoder (ffprobe "out of range
+	//                           intra chroma pred mode", VLC "error
+	//                           while decoding MB 0 1"). Evidence
+	//                           gathered 2026-04-19 comparing Mac
+	//                           localhost (0% loss, decode clean) vs
+	//                           prod CF Tunnel path (packet loss,
+	//                           decode fail despite identical pipeline).
+	//   - "nack pli"          — picture loss indication. Browser sends
+	//                           a fresh IDR when we detect decode is
+	//                           beyond repair, so the HLS segment can
+	//                           recover without breaking playback.
+	//   - "ccm fir"           — full intra request, older path some
+	//                           clients use instead of PLI.
+	//   - "goog-remb"         — receiver estimated max bitrate, lets
+	//                           Chrome adapt its encode to our reported
+	//                           capacity (prevents bursts that cause loss).
+	//   - "transport-cc"      — per-packet transport feedback used by
+	//                           Chrome's congestion controller. With
+	//                           transport-cc + default interceptors,
+	//                           Chrome paces the encode to avoid the
+	//                           bursts that provoke FU-A loss in the
+	//                           first place.
+	rtcpFb := []webrtc.RTCPFeedback{
+		{Type: "nack"},
+		{Type: "nack", Parameter: "pli"},
+		{Type: "ccm", Parameter: "fir"},
+		{Type: "goog-remb"},
+		{Type: "transport-cc"},
+	}
 	for _, fmtp := range h264Profiles {
 		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 			RTPCodecCapability: webrtc.RTPCodecCapability{
@@ -321,7 +450,7 @@ func NewServer(opts Options) (*Server, error) {
 				ClockRate:    90000,
 				Channels:     0,
 				SDPFmtpLine:  fmtp,
-				RTCPFeedback: nil,
+				RTCPFeedback: rtcpFb,
 			},
 			PayloadType: 0, // let MediaEngine assign
 		}, webrtc.RTPCodecTypeVideo); err != nil {
@@ -330,13 +459,23 @@ func NewServer(opts Options) (*Server, error) {
 	}
 	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType:  webrtc.MimeTypeOpus,
-			ClockRate: 48000,
-			Channels:  2,
+			MimeType:     webrtc.MimeTypeOpus,
+			ClockRate:    48000,
+			Channels:     2,
+			RTCPFeedback: []webrtc.RTCPFeedback{{Type: "transport-cc"}},
 		},
 		PayloadType: 0,
 	}, webrtc.RTPCodecTypeAudio); err != nil {
 		return nil, fmt.Errorf("whip: register opus codec: %w", err)
+	}
+	// RegisterDefaultInterceptors wires the pion-maintained pipeline
+	// for NACK (so we actually request retransmission when we detect
+	// a seq gap), RTP sender/receiver reports, and TWCC feedback. The
+	// default chain matches what the pion examples ship with and is
+	// the assumed baseline for any production WebRTC receiver.
+	ir := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, ir); err != nil {
+		return nil, fmt.Errorf("whip: register default interceptors: %w", err)
 	}
 	settings := webrtc.SettingEngine{}
 	if len(opts.PublicIPs) > 0 {
@@ -351,7 +490,7 @@ func NewServer(opts Options) (*Server, error) {
 	// IPs on the same subnet — loopback sidesteps that for co-resident
 	// viewers like test harnesses.
 	settings.SetIncludeLoopbackCandidate(true)
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithSettingEngine(settings))
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(ir), webrtc.WithSettingEngine(settings))
 	dids := make(map[string]struct{}, len(opts.AuthorisedDIDs))
 	for _, did := range opts.AuthorisedDIDs {
 		if did != "" {

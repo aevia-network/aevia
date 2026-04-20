@@ -369,15 +369,51 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 			whipLog.Error().Err(err).Str("event", "live_sink_init_failed").Str("session_id", sess.ID).Msg("live sink init failed")
 			return
 		}
+		// CMAFSegmenter feeds the sink's Merkle-leaf accumulator — one
+		// hash per chunk gets written into ContentStore for the VOD
+		// manifest. Its HLS output is NOT served (viewers hit /hls/*
+		// which goes through gohlslib); we keep it only because it
+		// also happens to populate the sink's per-chunk CIDs.
 		seg, err := whip.NewCMAFSegmenter(sink)
 		if err != nil {
 			whipLog.Error().Err(err).Str("event", "live_segmenter_init_failed").Str("session_id", sess.ID).Msg("live segmenter init failed")
+			return
+		}
+		// HLSMuxer is the actual HTTP HLS surface — gohlslib emits
+		// spec-compliant MPEG-TS / fmp4 / LL-HLS under /live/{id}/hls/*.
+		// Replaces the hand-rolled CMAF writer that VLC/ffplay rejected.
+		// SPS/PPS come from the WHIP offer's sprop-parameter-sets;
+		// browsers omit them from the RTP stream so without this the
+		// MPEG-TS segments reference a PPS the decoder never saw.
+		sps, pps := sess.VideoSPSPPS()
+		if len(sps) > 0 && len(pps) > 0 {
+			whipLog.Info().Str("event", "live_muxer_sprop_loaded").Int("sps_bytes", len(sps)).Int("pps_bytes", len(pps)).Str("session_id", sess.ID).Msg("SDP sprop-parameter-sets extracted")
+		}
+		// Chrome does NOT ship sprop-parameter-sets in the SDP under
+		// packetization-mode=1 — it emits SPS+PPS inline via STAP-A
+		// with every IDR instead (evidence gathered 2026-04-19 via
+		// nal_census: 20 IDR ↔ 20 SPS ↔ 20 PPS). HLSMuxer's inline
+		// capture path handles that without needing sprop, so the
+		// absence is informational not a warning.
+		muxer, err := whip.NewHLSMuxer(sess.ID, sps, pps)
+		if err != nil {
+			whipLog.Error().Err(err).Str("event", "live_muxer_init_failed").Str("session_id", sess.ID).Msg("live muxer init failed")
 			return
 		}
 		if err := liveRouter.AttachSession(sess.ID, sink); err != nil {
 			whipLog.Error().Err(err).Str("event", "live_router_attach_failed").Str("session_id", sess.ID).Msg("live router attach failed")
 			return
 		}
+		if err := liveRouter.AttachMuxer(sess.ID, muxer); err != nil {
+			whipLog.Error().Err(err).Str("event", "live_router_attach_muxer_failed").Str("session_id", sess.ID).Msg("live router attach muxer failed")
+			return
+		}
+		// Tee RTP depacketized frames into BOTH consumers:
+		//   - seg   → sink → Merkle leaves + VOD manifest
+		//   - muxer → gohlslib → HLS playlist + segments
+		// Frame copy happens once inside TeeReadSessionTrack; each
+		// FrameSink sees the same VideoFrame/AudioFrame sequentially.
+		sinkTee := whip.NewTeeFrameSink(seg, muxer)
 		if err := meshSvc.JoinSession(sess.ID); err != nil {
 			// Non-fatal — live stream still serves WHEP/HLS. Only the
 			// viewer-side P2P chip loses its "N na sala" count.
@@ -402,7 +438,7 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 				// WHEP viewers) and every RTPSink attached by the mirror
 				// client (for cross-node replication). Sinks are only
 				// registered when --mirror-peers is non-empty.
-				if err := whip.TeeReadSessionTrack(track, sess, seg); err != nil {
+				if err := whip.TeeReadSessionTrack(track, sess, sinkTee); err != nil {
 					whipLog.Warn().Err(err).Str("event", "live_track_eof").Str("session_id", sess.ID).Msg("track pump ended")
 				}
 			}()
@@ -487,6 +523,10 @@ func runProviderLoop(ctx context.Context, cancel context.CancelFunc, logger zero
 			if err := seg.Close(); err != nil {
 				whipLog.Warn().Err(err).Str("event", "live_segmenter_close").Str("session_id", sess.ID).Msg("segmenter close")
 			}
+			if err := muxer.Close(); err != nil {
+				whipLog.Warn().Err(err).Str("event", "live_muxer_close").Str("session_id", sess.ID).Msg("muxer close")
+			}
+			liveRouter.DetachMuxer(sess.ID)
 			// Pin the final manifest so the VOD endpoint (manifest.json
 			// + EXT-X-ENDLIST playlist) becomes available. Idempotent
 			// if CMAFSegmenter.Close already drove Finalize.
